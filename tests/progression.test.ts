@@ -20,7 +20,8 @@ const CLEAR_SETUP: Record<string, { goal: { x: number; y: number }; key?: { x: n
   "stage-02": { goal: { x: 34, y: 15 } },
   "stage-03": { goal: { x: 34, y: 12 } },
   "stage-04": { goal: { x: 34, y: 12 } },
-  "stage-05": { goal: { x: 33, y: 9 } },
+  // ゴールは左棚。鍵は右棚にあるので先に取らせる。
+  "stage-05": { goal: { x: 13, y: 9 }, key: { x: 33, y: 9 } },
   "stage-06": { goal: { x: 29, y: 9 } },
 };
 

@@ -138,4 +138,76 @@ describe("つり合いおもり: 同じ信号が2つの足場を逆向きに動�
     expect(p1!.box.y).toBeLessThan(startY); // 持ち上げられている
     expect(p1!.box.y + p1!.box.h).toBe(a.y); // 足場の上に乗ったまま
   });
+
+  /**
+   * 通しでクリアできることの証明。
+   *
+   * 初版は「右棚にゴール、板は地上と左棚だけ」という構成で、右棚へ上がるには
+   * 誰かが板を離す必要があるのに離す役が右棚に居られず、1人しか到達できない
+   * 詰み盤面だった。地形と足場の単体テストは全部通っていたので気付けなかった。
+   * ここは想定手順をそのまま踏んで、最後まで到達できることを固定する。
+   */
+  it("想定手順で2人ともゴールに到達できる", () => {
+    const { game, input } = newGame();
+    const step = (n: number): void => run(game, input, n);
+    const [p1, p2] = game.players;
+    const A = () => game.stage.solids()[0]!.box;
+    const B = () => game.stage.solids()[1]!.box;
+    const rideOn = (p: typeof p1, box: { x: number; y: number }): void =>
+      p!.teleport(box.x + 24, box.y - 24);
+    const GROUND_PLATE = { x: 4 * TILE + 8, y: 15 * TILE };
+    const LEDGE_PLATE = { x: 11 * TILE, y: 9 * TILE };
+    const AWAY = { x: 20 * TILE, y: 15 * TILE };
+
+    // 1. P1 が地上の板を踏むと B が下り、A が上がる（逆位相）
+    p1!.teleport(GROUND_PLATE.x, GROUND_PLATE.y);
+    step(120);
+    expect(B().y).toBe(15 * TILE);
+    expect(A().y).toBe(10 * TILE);
+
+    // 2-3. P2 が B に乗り、P1 が離すと B が P2 を右棚へ運ぶ
+    rideOn(p2, B());
+    step(5);
+    p1!.teleport(AWAY.x, AWAY.y);
+    step(120);
+    expect(p2!.box.y + p2!.box.h).toBe(10 * TILE);
+
+    // 4-5. 鍵を取り、B で地上へ戻る
+    p2!.teleport(33 * TILE, 9 * TILE);
+    step(10);
+    rideOn(p2, B());
+    p1!.teleport(GROUND_PLATE.x, GROUND_PLATE.y);
+    step(120);
+    expect(p2!.box.y + p2!.box.h).toBe(15 * TILE);
+
+    // 6-7. P2 が A に乗り換え、A で左棚へ
+    p2!.teleport(24 * TILE, 15 * TILE);
+    p1!.teleport(AWAY.x, AWAY.y);
+    step(120);
+    rideOn(p2, A());
+    p1!.teleport(GROUND_PLATE.x, GROUND_PLATE.y);
+    step(120);
+    expect(p2!.box.y + p2!.box.h).toBe(10 * TILE);
+
+    // 8-10. P2 が板を踏み、残った P1 も A で左棚へ（ここが初版で詰んでいた区間）
+    p2!.teleport(14 * TILE, 9 * TILE);
+    p1!.teleport(AWAY.x, AWAY.y);
+    step(120);
+    expect(A().y).toBe(15 * TILE);
+
+    rideOn(p1, A());
+    step(5);
+    expect(p1!.box.y + p1!.box.h).toBe(15 * TILE);
+
+    p2!.teleport(LEDGE_PLATE.x, LEDGE_PLATE.y);
+    step(120);
+    expect(p1!.box.y + p1!.box.h).toBe(10 * TILE); // 運ばれて棚の高さへ
+
+    // 11. 2人とも棚の上を歩いてゴールへ
+    p2!.teleport(13 * TILE, 9 * TILE);
+    p1!.teleport(13 * TILE + 40, 9 * TILE);
+    step(10);
+
+    expect(game.phase).toBe("cleared");
+  });
 });
