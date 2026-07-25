@@ -11,7 +11,7 @@ import {
 } from "../engine/physics";
 import type { Renderer } from "../engine/renderer";
 import { overlaps } from "../engine/aabb";
-import { PALETTE } from "../art/palette";
+import { P1_PALETTE, P2_PALETTE, PALETTE, type PlayerPalette } from "../art/palette";
 import { clawdSkin } from "../art/clawd";
 import { drawTiles } from "../art/tiles";
 import { characterStateOf } from "../art/skin";
@@ -25,6 +25,10 @@ import { VIEW_H, VIEW_W } from "./tuning";
 import "./gimmicks/index";
 
 export type GamePhase = "title" | "playing" | "cleared";
+
+/** 操作説明のキーキャップの一辺と間隔 (px)。 */
+const CAP = 22;
+const CAP_GAP = 5;
 
 export class Game {
   /** ロード済みステージ。HUD と結合テストから参照する。 */
@@ -179,22 +183,18 @@ export class Game {
       r.setAlpha(0.82);
       r.rect(0, 0, VIEW_W, VIEW_H, "#000000");
       r.setAlpha(1);
-      r.text("CLAUDE PARK", VIEW_W / 2, VIEW_H / 2 - 40, {
+      r.text("CLAUDE PARK", VIEW_W / 2, 130, {
         color: PALETTE.accent,
         size: 44,
         align: "center",
       });
-      r.text("2人で協力しないとクリアできません", VIEW_W / 2, VIEW_H / 2 + 2, {
+      r.text("2人で協力しないとクリアできません", VIEW_W / 2, 164, {
         color: PALETTE.textPrimary,
         size: 16,
         align: "center",
       });
-      r.text("P1: A / D / W    P2: ← / → / ↑    R: やり直し", VIEW_W / 2, VIEW_H / 2 + 32, {
-        color: PALETTE.textDim,
-        size: 14,
-        align: "center",
-      });
-      r.text("Enter でスタート", VIEW_W / 2, VIEW_H / 2 + 70, {
+      const bottom = this.drawControlBlock(r, 200);
+      r.text("Enter でスタート", VIEW_W / 2, bottom + 34, {
         color: PALETTE.textPrimary,
         size: 18,
         align: "center",
@@ -207,8 +207,11 @@ export class Game {
       size: 14,
     });
 
+    this.renderControls(r);
+
     if (this._phase === "cleared") {
       r.setAlpha(0.55);
+      // 以下はクリア演出。操作説明の上に重ねる。
       r.rect(0, 0, VIEW_W, VIEW_H, "#000000");
       r.setAlpha(1);
       r.text("STAGE CLEAR", VIEW_W / 2, VIEW_H / 2 - 6, {
@@ -222,5 +225,105 @@ export class Game {
         align: "center",
       });
     }
+  }
+
+  /**
+   * 操作説明。ステージ1は下5行しか使っていないので、
+   * 空いている上部空間をそのまま説明の置き場にする。
+   *
+   * キーの隣にミニ Clawd を実物と同じ描画コードで並べるので、
+   * 「どちらの色がどのキーか」の対応が実機と食い違うことがない。
+   */
+  private renderControls(r: Renderer): void {
+    // 見出しにアクセント色は使わない。アクセントは鍵と解錠済みゴールの
+    // 「触れるもの」専用に取っておき、背景の文字と混同させないため。
+    r.text("CLAUDE PARK", VIEW_W / 2, 120, {
+      color: PALETTE.textDim,
+      size: 20,
+      align: "center",
+    });
+    this.drawControlBlock(r, 148);
+  }
+
+  /**
+   * 操作説明の本体。タイトル画面とゲーム中で共用する。
+   * キー一覧を2箇所に書くと必ず片方が古くなるので、必ずここを通す。
+   * @returns 描画後の下端 y
+   */
+  private drawControlBlock(r: Renderer, top: number): number {
+    const rows: { color: PlayerPalette; move: [string, string]; jump: string }[] = [
+      { color: P1_PALETTE, move: ["A", "D"], jump: "W" },
+      { color: P2_PALETTE, move: ["←", "→"], jump: "↑" },
+    ];
+
+    // ラベル("移動"/"ジャンプ")の描画幅まで含めた実測の総幅。
+    // キーキャップだけで中央寄せすると、右に伸びるラベルのぶん左に寄って見える。
+    const blockW = 215;
+    const x0 = Math.round(VIEW_W / 2 - blockW / 2);
+    let y = top;
+
+    for (const row of rows) {
+      this.drawControlRow(r, x0, y, row);
+      y += 34;
+    }
+
+    r.text("R  やり直し", VIEW_W / 2, y + 8, {
+      color: PALETTE.textDim,
+      size: 13,
+      align: "center",
+    });
+    return y + 20;
+  }
+
+  private drawControlRow(
+    r: Renderer,
+    x: number,
+    y: number,
+    row: { color: PlayerPalette; move: [string, string]; jump: string },
+  ): void {
+    // 実物と同じ ClawdSkin を使う。専用アイコンを別に描くと、
+    // キャラの見た目を変えたときに説明だけ古いまま取り残される。
+    clawdSkin.draw(r, {
+      x: x + 3,
+      y: y + 2,
+      w: 15,
+      h: 18,
+      facing: 1,
+      vx: 0,
+      vy: 0,
+      grounded: true,
+      squash: 1,
+      carrying: false,
+      color: row.color,
+      time: 0,
+    });
+
+    const label = (s: string, lx: number): void => {
+      r.text(s, lx, y + CAP / 2, {
+        color: PALETTE.textDim,
+        size: 13,
+        baseline: "middle",
+      });
+    };
+
+    let cx = x + 36;
+    cx = this.drawKeyCap(r, cx, y, row.move[0]);
+    cx = this.drawKeyCap(r, cx, y, row.move[1]);
+    label("移動", cx + 2);
+    cx += 44;
+    cx = this.drawKeyCap(r, cx, y, row.jump);
+    label("ジャンプ", cx + 2);
+  }
+
+  /** キーキャップを1つ描き、次のキャップの x を返す。 */
+  private drawKeyCap(r: Renderer, x: number, y: number, key: string): number {
+    r.roundRect(x, y, CAP, CAP, 4, PALETTE.tileTop);
+    r.text(key, x + CAP / 2, y + CAP / 2 + 1, {
+      color: PALETTE.textPrimary,
+      size: 13,
+      align: "center",
+      baseline: "middle",
+    });
+    return x + CAP + CAP_GAP;
   }
 }

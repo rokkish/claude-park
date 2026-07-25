@@ -129,8 +129,26 @@ export class RecordingRenderer implements Renderer {
     });
   }
 
-  /** 文字は焼かない。レイアウト確認が目的で、字形は本物の canvas でしか出ない。 */
-  text(_s: string, _x: number, _y: number, _o?: TextOptions): void {}
+  /**
+   * 字形は本物の canvas でしか出ないので、概算幅の帯として置く。
+   * 中央寄せの検証には十分だが、実際の字幅とは一致しない点に注意
+   * （最終確認は必ずブラウザで行うこと）。
+   */
+  text(s: string, x: number, y: number, o: TextOptions = {}): void {
+    const size = o.size ?? 16;
+    // 全角はほぼ 1em、半角は約 0.55em として見積もる。
+    let w = 0;
+    for (const ch of s) w += ch.codePointAt(0)! > 0x2e80 ? size : size * 0.55;
+
+    const ax = o.align === "center" ? x - w / 2 : o.align === "right" ? x - w : x;
+    const ay =
+      o.baseline === "middle"
+        ? y - size / 2
+        : o.baseline === "top" || o.baseline === "hanging"
+          ? y
+          : y - size * 0.8; // alphabetic
+    this.rect(ax, ay, w, size, o.color ?? "#ffffff");
+  }
 
   save(): void {
     this.stack.push({ ...this.t });
