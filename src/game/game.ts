@@ -22,6 +22,7 @@ import type { StageData } from "./stageData";
 import type { GimmickContext } from "./gimmicks/types";
 import { VIEW_H, VIEW_W } from "./tuning";
 import { formatTime } from "../engine/time";
+import { VERSION_LABEL } from "../version";
 // 副作用 import: 全ギミックの registry 登録。loadStage より前に必ず評価される必要がある。
 import "./gimmicks/index";
 
@@ -413,9 +414,18 @@ export class Game {
       y + 32,
       { color: PALETTE.textDim, size: 11, align: "center" },
     );
+
+    // バージョンは短縮 SHA 付き。どのビルドが動いているかを特定できないと
+    // 「直したはずの不具合」の報告を突き合わせられない。
+    r.setAlpha(0.4);
+    r.text(VERSION_LABEL, VIEW_W / 2, y + 48, {
+      color: PALETTE.textDim,
+      size: 10,
+      align: "center",
+    });
     r.setAlpha(1);
 
-    return y + 44;
+    return y + 60;
   }
 
   private drawControlRow(r: Renderer, x: number, y: number, row: ControlRow): void {
