@@ -34,6 +34,9 @@
            上下限を px で挟み、タブレットで巨大化・小型機で潰れるのを防ぐ。 */
         --btn-size: clamp(56px, 19vmin, 92px);
         --jump-size: calc(var(--btn-size) * 1.15);
+        /* 操作帯の高さ。canvas の大きさをここから逆算するので、
+           内容依存にせず必ず確定値にしておく。 */
+        --bar-h: calc(var(--jump-size) + 24px);
       }
 
       html,
@@ -58,16 +61,28 @@
         min-height: 0;
         display: grid;
         place-items: center;
+        overflow: hidden;
       }
 
-      /* object-fit:contain は canvas のビットマップにも効くので、
-         入れ物がどんな比率でも 960x432 を保ったまま最大化できる。 */
+      /*
+       * 幅を viewport から直接計算し、高さは aspect-ratio に決めさせる。
+       *
+       * width:100% / height:100% + object-fit には頼れない。親の高さが
+       * 内容依存だとパーセントが解決されず、canvas が固有サイズ
+       * （バッキングストアの 960*dpr = dpr3 なら 2880px）で表示されて
+       * 画面からはみ出す。実際にそれで下部が操作帯に隠れた。
+       * 20/9 は 960/432。
+       */
       #game {
         display: block;
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
+        aspect-ratio: 960 / 432;
+        width: min(960px, 100vw, calc(100dvh * 20 / 9));
         background: var(--bg);
+      }
+
+      /* 操作帯のぶんを引いた高さに収める。 */
+      body.touch-mode #game {
+        width: min(100vw, calc((100dvh - var(--bar-h)) * 20 / 9));
       }
 
       /* ===== タッチ操作 ===== */
@@ -79,6 +94,11 @@
 
       body.touch-mode #touch-controls {
         display: flex;
+        /* canvas の幅を --bar-h から逆算しているので、実際の高さも
+           必ずそれに一致させる。内容で伸び縮みさせると計算がずれる。 */
+        height: var(--bar-h);
+        box-sizing: border-box;
+        flex: 0 0 auto;
         align-items: center;
         justify-content: space-between;
         /* 中央を大きく空ける。2人が1台を挟むので手がぶつかると操作を邪魔する。 */
