@@ -1,0 +1,55 @@
+import type { AABB } from "../../engine/aabb";
+import type { Renderer } from "../../engine/renderer";
+import type { TileGrid } from "../../engine/tilegrid";
+import type { PlayerState } from "../entities";
+import type { Inventory, SignalBus } from "../signals";
+
+/** ギミックが update / onOverlap 中に触れてよいもの。 */
+export interface GimmickContext {
+  signals: SignalBus;
+  inventory: Inventory;
+  grid: TileGrid;
+  players: readonly PlayerState[];
+  /** ゴールが呼ぶ。以降のクリア演出はゲーム側の責務。 */
+  requestClear(): void;
+}
+
+/** 生成時に渡される環境。ステージ本体には依存させない（循環を避けるため）。 */
+export interface SpawnContext {
+  tileSize: number;
+  grid: TileGrid;
+}
+
+/**
+ * ギミックの共通面 (SPEC §5.1)。
+ * 必須は update / draw のみ。能力はオプショナルメソッドの有無で表明する。
+ * 実装しなければそのコストは一切かからない。
+ */
+export interface Gimmick {
+  readonly type: string;
+  /** 判定・描画の基準矩形（ワールド px）。 */
+  readonly aabb: AABB;
+
+  update(dt: number, ctx: GimmickContext): void;
+  draw(r: Renderer): void;
+
+  /** 実装すると Solid になる。null を返す間はすり抜けられる（開いたゲート）。 */
+  solidAABB?(): AABB | null;
+  /** 実装するとプレイヤーとの重なり通知が来る（感圧板・鍵・ゴール）。 */
+  onOverlap?(player: PlayerState, ctx: GimmickContext): void;
+  /** ステージリセット時に初期状態へ戻す。 */
+  reset?(): void;
+}
+
+/** ステージ JSON の 1 エントリ。x/y はタイル座標。 */
+export interface GimmickParams {
+  type: string;
+  x: number;
+  y: number;
+  [key: string]: unknown;
+}
+
+export interface GimmickDef<P extends GimmickParams = GimmickParams> {
+  readonly type: string;
+  create(params: P, ctx: SpawnContext): Gimmick;
+}
