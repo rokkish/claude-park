@@ -270,6 +270,20 @@
         font-size: 14px;
       }
 
+      /*
+       * 日本語は文節の途中で折り返すと読みにくい（「収ま／りません」など）。
+       * 文節を inline-block でくくり、その境界でしか改行させない。
+       * word-break: auto-phrase は同じことを自動でやるが Chromium 系のみなので、
+       * 併記しつつ単体では頼らない。
+       */
+      #rotate-hint p {
+        word-break: auto-phrase;
+      }
+
+      #rotate-hint .np {
+        display: inline-block;
+      }
+
       @keyframes tilt {
         0%,
         40% {
@@ -334,10 +348,10 @@
             stroke-linecap="round"
           />
         </svg>
-        <p class="lead">横向きにしてください</p>
+        <p class="lead"><span class="np">横向きにしてください</span></p>
         <p class="sub">
-          ステージが横長のため、縦画面では2人ぶんの操作ボタンが収まりません。<br />
-          端末の画面回転ロックがかかっている場合は解除してください。
+          <span class="np">ステージが</span><span class="np">横長のため、</span><span class="np">縦画面では</span><span class="np">2人ぶんの</span><span class="np">操作ボタンが</span><span class="np">収まりません。</span><br />
+          <span class="np">端末の</span><span class="np">画面回転ロックが</span><span class="np">かかっている場合は</span><span class="np">解除してください。</span>
         </p>
       </div>
 
