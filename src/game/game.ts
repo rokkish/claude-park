@@ -218,9 +218,12 @@ export class Game {
       return;
     }
 
-    r.text(this.stage.data.name, 14, 26, {
+    // 左上は外部リンクのボタンが被りうるので上部中央に置く
+    // （リンクは画面座標、こちらは canvas 座標なので、狭い窓では重なる）。
+    r.text(this.stage.data.name, VIEW_W / 2, 30, {
       color: PALETTE.textDim,
       size: 14,
+      align: "center",
     });
 
     this.renderControls(r);
