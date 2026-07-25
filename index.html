@@ -2,32 +2,221 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- user-scalable=no: ダブルタップズームが入ると連打がズーム扱いになり操作不能になる -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <title>Claude Park</title>
     <style>
+      :root {
+        --bg: #131110;
+        --btn: #2e2a26;
+        --btn-edge: #3d3833;
+        --btn-on: #d97757;
+        --text: #f0e5d8;
+        --dim: #8a8078;
+        --p1: #d97757;
+        --p2: #57a8d9;
+      }
+
       html,
       body {
         margin: 0;
         height: 100%;
-        background: #131110;
+        background: var(--bg);
         overflow: hidden;
+        /* 引っ張って更新やバウンススクロールが操作を奪うのを防ぐ */
+        overscroll-behavior: none;
+        -webkit-text-size-adjust: 100%;
       }
-      body {
-        display: grid;
-        place-items: center;
+
+      #app {
+        display: flex;
+        flex-direction: column;
+        height: 100dvh;
+        align-items: center;
+        justify-content: center;
       }
-      /* 論理解像度 960x432 を維持したまま viewport に収める */
+
+      /* 論理解像度 960x432 の比率を保ったまま収める */
       #game {
         display: block;
-        max-width: 100vw;
-        max-height: 100vh;
-        aspect-ratio: 960 / 432;
         width: 960px;
+        max-width: 100vw;
+        max-height: 100dvh;
+        aspect-ratio: 960 / 432;
+        background: var(--bg);
+      }
+
+      /* ===== タッチ操作 ===== */
+
+      #touch-controls {
+        display: none;
+      }
+
+      body.touch-mode #touch-controls {
+        display: flex;
+        /* ボタン上でのスクロール・ズーム・長押しメニューを全て殺す */
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .pad {
+        display: flex;
+        align-items: center;
+        gap: 3vmin;
+      }
+
+      .pad-label {
+        font: 600 3vmin/1 system-ui, sans-serif;
+        letter-spacing: 0.08em;
+      }
+
+      .pad-p1 .pad-label {
+        color: var(--p1);
+      }
+
+      .pad-p2 .pad-label {
+        color: var(--p2);
+      }
+
+      [data-btn] {
+        appearance: none;
+        border: 2px solid var(--btn-edge);
+        border-radius: 12px;
+        background: var(--btn);
+        color: var(--text);
+        font: 600 5vmin/1 system-ui, sans-serif;
+        display: grid;
+        place-items: center;
+        /* pointer-events は要る: elementFromPoint がこの要素を返す必要がある */
+        touch-action: none;
+      }
+
+      [data-btn].is-pressed {
+        background: var(--btn-on);
+        border-color: var(--text);
+        color: #1b1917;
+      }
+
+      .dpad {
+        display: flex;
+        gap: 2vmin;
+      }
+
+      .dpad [data-btn],
+      .jump {
+        width: 15vmin;
+        height: 15vmin;
+      }
+
+      .jump {
+        border-radius: 50%;
+      }
+
+      #sys-buttons {
+        position: fixed;
+        top: env(safe-area-inset-top, 0px);
+        right: 0;
+        display: none;
+        gap: 8px;
+        padding: 8px;
+      }
+
+      body.touch-mode #sys-buttons {
+        display: flex;
+        touch-action: none;
+      }
+
+      #sys-buttons [data-btn] {
+        min-width: 56px;
+        height: 40px;
+        font-size: 14px;
+        padding: 0 12px;
+        opacity: 0.85;
+      }
+
+      /* --- 縦画面: ゲームを上、操作を下の余白いっぱいに --- */
+      @media (orientation: portrait) {
+        body.touch-mode #app {
+          justify-content: flex-start;
+        }
+
+        body.touch-mode #game {
+          width: 100vw;
+        }
+
+        body.touch-mode #touch-controls {
+          flex: 1;
+          width: 100vw;
+          flex-direction: row;
+          align-items: center;
+          justify-content: space-evenly;
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
+
+        body.touch-mode .pad {
+          flex-direction: column;
+        }
+      }
+
+      /* --- 横画面: ゲームを全面に、操作は左右下隅へ重ねる --- */
+      @media (orientation: landscape) {
+        body.touch-mode #touch-controls {
+          position: fixed;
+          inset: auto 0 0 0;
+          justify-content: space-between;
+          padding: 0 max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-bottom));
+          pointer-events: none;
+        }
+
+        body.touch-mode .pad {
+          pointer-events: auto;
+          opacity: 0.9;
+        }
+
+        body.touch-mode .dpad [data-btn],
+        body.touch-mode .jump {
+          width: 13vmin;
+          height: 13vmin;
+        }
       }
     </style>
   </head>
   <body>
-    <canvas id="game"></canvas>
+    <div id="app">
+      <canvas id="game"></canvas>
+
+      <div id="touch-controls">
+        <div class="pad pad-p1">
+          <span class="pad-label">P1</span>
+          <div class="dpad">
+            <button data-btn="p0-left" aria-label="P1 左">◀</button>
+            <button data-btn="p0-right" aria-label="P1 右">▶</button>
+          </div>
+          <button class="jump" data-btn="p0-jump" aria-label="P1 ジャンプ">▲</button>
+        </div>
+
+        <div class="pad pad-p2">
+          <span class="pad-label">P2</span>
+          <div class="dpad">
+            <button data-btn="p1-left" aria-label="P2 左">◀</button>
+            <button data-btn="p1-right" aria-label="P2 右">▶</button>
+          </div>
+          <button class="jump" data-btn="p1-jump" aria-label="P2 ジャンプ">▲</button>
+        </div>
+      </div>
+
+      <div id="sys-buttons">
+        <button data-btn="key-Enter" aria-label="スタート">START</button>
+        <button data-btn="key-KeyR" aria-label="やり直し">R</button>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

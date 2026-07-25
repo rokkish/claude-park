@@ -26,6 +26,16 @@ import "./gimmicks/index";
 
 export type GamePhase = "title" | "playing" | "cleared";
 
+/** 操作説明の1行ぶん。キーボードとタッチで表示は変わるが、対応は1箇所で持つ。 */
+interface ControlRow {
+  color: PlayerPalette;
+  name: string;
+  /** タッチ時、画面下のどちら側のパッドか。 */
+  side: string;
+  move: [string, string];
+  jump: string;
+}
+
 /** 操作説明のキーキャップの一辺と間隔 (px)。 */
 const CAP = 22;
 const CAP_GAP = 5;
@@ -46,10 +56,15 @@ export class Game {
   /** 描画アニメ用の経過秒。物理には使わない。 */
   private time = 0;
 
+  /** 画面上のタッチボタンで遊んでいるか。操作説明の文面だけを切り替える。 */
+  private readonly touchMode: boolean;
+
   constructor(
     private readonly input: InputSource,
     stageData: StageData,
+    opts: { touchMode?: boolean } = {},
   ) {
+    this.touchMode = opts.touchMode ?? false;
     this.stage = loadStage(stageData);
     this.world = { grid: this.stage.grid, solidBoxes: [], actors: [] };
     this.view = fitCamera(
@@ -194,7 +209,7 @@ export class Game {
         align: "center",
       });
       const bottom = this.drawControlBlock(r, 200);
-      r.text("Enter でスタート", VIEW_W / 2, bottom + 34, {
+      r.text(this.touchMode ? "START でスタート" : "Enter でスタート", VIEW_W / 2, bottom + 34, {
         color: PALETTE.textPrimary,
         size: 18,
         align: "center",
@@ -251,14 +266,15 @@ export class Game {
    * @returns 描画後の下端 y
    */
   private drawControlBlock(r: Renderer, top: number): number {
-    const rows: { color: PlayerPalette; move: [string, string]; jump: string }[] = [
-      { color: P1_PALETTE, move: ["A", "D"], jump: "W" },
-      { color: P2_PALETTE, move: ["←", "→"], jump: "↑" },
+    const rows: ControlRow[] = [
+      { color: P1_PALETTE, name: "P1", side: "左", move: ["A", "D"], jump: "W" },
+      { color: P2_PALETTE, name: "P2", side: "右", move: ["←", "→"], jump: "↑" },
     ];
 
-    // ラベル("移動"/"ジャンプ")の描画幅まで含めた実測の総幅。
-    // キーキャップだけで中央寄せすると、右に伸びるラベルのぶん左に寄って見える。
-    const blockW = 215;
+    // ラベルの描画幅まで含めた実測の総幅。キーキャップやアイコンだけを基準に
+    // 中央寄せすると、右に伸びるラベルのぶん左に寄って見える。
+    // タッチ時は文言が長くなるので幅が変わる。
+    const blockW = this.touchMode ? 195 : 215;
     const x0 = Math.round(VIEW_W / 2 - blockW / 2);
     let y = top;
 
@@ -267,7 +283,7 @@ export class Game {
       y += 34;
     }
 
-    r.text("R  やり直し", VIEW_W / 2, y + 8, {
+    r.text(this.touchMode ? "右上の R でやり直し" : "R  やり直し", VIEW_W / 2, y + 8, {
       color: PALETTE.textDim,
       size: 13,
       align: "center",
@@ -287,12 +303,7 @@ export class Game {
     return y + 44;
   }
 
-  private drawControlRow(
-    r: Renderer,
-    x: number,
-    y: number,
-    row: { color: PlayerPalette; move: [string, string]; jump: string },
-  ): void {
+  private drawControlRow(r: Renderer, x: number, y: number, row: ControlRow): void {
     // 実物と同じ ClawdSkin を使う。専用アイコンを別に描くと、
     // キャラの見た目を変えたときに説明だけ古いまま取り残される。
     clawdSkin.draw(r, {
@@ -317,6 +328,13 @@ export class Game {
         baseline: "middle",
       });
     };
+
+    // タッチ操作のときにキーキャップを出すと嘘になる。
+    // 実際のボタンは DOM 側にあるので、どちらのパッドが自分かだけを伝える。
+    if (this.touchMode) {
+      label(`${row.name}  画面下 ${row.side}側のボタン`, x + 36);
+      return;
+    }
 
     let cx = x + 36;
     cx = this.drawKeyCap(r, cx, y, row.move[0]);

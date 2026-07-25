@@ -26,8 +26,10 @@ function idle(): PlayerInput {
   return { left: false, right: false, jumpHeld: false, jumpPressed: false };
 }
 
+// 第4引数に touch を渡すと、タッチ操作時の操作説明で焼き出す
+const touchMode = process.argv[4] === "touch";
 const input = new ScriptedInput([idle(), idle()]);
-const game = new Game(input, stage01 as StageData);
+const game = new Game(input, stage01 as StageData, { touchMode });
 game.start();
 
 const pose = process.argv[3] ?? "start";

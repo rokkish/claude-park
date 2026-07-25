@@ -106,6 +106,49 @@ export class KeyboardInput implements InputSource {
   }
 }
 
+/**
+ * 複数の入力源を論理和で束ねる。
+ * キーボードとタッチを同時に生かしておけば、
+ * 「タッチ端末かどうか」の判定を間違えても操作不能にならない。
+ * 判定は画面上のボタンを出すかどうかにだけ使う。
+ */
+export class CompositeInput implements InputSource {
+  constructor(private readonly sources: InputSource[]) {}
+
+  sample(playerIndex: number): PlayerInput {
+    const out: PlayerInput = {
+      left: false,
+      right: false,
+      jumpHeld: false,
+      jumpPressed: false,
+    };
+    for (const s of this.sources) {
+      const i = s.sample(playerIndex);
+      out.left ||= i.left;
+      out.right ||= i.right;
+      out.jumpHeld ||= i.jumpHeld;
+      out.jumpPressed ||= i.jumpPressed;
+    }
+    return out;
+  }
+
+  isPressed(code: string): boolean {
+    return this.sources.some((s) => s.isPressed(code));
+  }
+
+  wasPressed(code: string): boolean {
+    return this.sources.some((s) => s.wasPressed(code));
+  }
+
+  endStep(): void {
+    for (const s of this.sources) s.endStep();
+  }
+
+  dispose(): void {
+    for (const s of this.sources) s.dispose();
+  }
+}
+
 /** テストやリプレイ用。手で組み立てた入力を流し込む。 */
 export class ScriptedInput implements InputSource {
   constructor(public inputs: PlayerInput[] = []) {}
