@@ -2,3 +2,7 @@ node_modules/
 dist/
 *.log
 .DS_Store
+
+# Anthropic のアイコンそのものなので、手元の作画リファレンスとしてのみ置く。
+# 実行時には使っておらずバンドルにも入らない。再配布しないため追跡しない。
+src/art/claudecode.webp

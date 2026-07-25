@@ -3,7 +3,9 @@ import type { CharacterSkin, CharacterState } from "./skin";
 
 /**
  * Clawd のピクセルアート描画 (SPEC §6.1, §6.2)。
- * リファレンス src/art/claudecode.webp に合わせた、陰影の無いフラットな単色スプライト。
+ * Claude Code のアイコンを作画リファレンスにした、陰影の無いフラットな単色スプライト。
+ * リファレンス画像そのものは Anthropic の著作物なので、リポジトリには含めていない
+ * （手元に置く場合は src/art/claudecode.webp。.gitignore 済み）。
  *
  * スプライトは「1スプライトピクセル = ux × uy」のグリッドで組む。
  * 目と脚の列位置はリファレンスと同一（12列の胴体に対して 目=2,9 / 脚=1,3,8,10）。

@@ -1,0 +1,55 @@
+name: Deploy to GitHub Pages
+
+# docs/ フォルダや gh-pages ブランチは使わない。
+# このリポジトリの docs/ には仕様書が入っているため、Pages のソースに
+# するとそちらが公開されてしまう。Actions から dist/ を直接配信する。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 連続 push 時は最新のデプロイだけを残す。実行中のものは中断しない
+# （中断すると Pages が中途半端な状態で残ることがあるため）。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # テストと型検査を公開前のゲートにする。
+      # ステージ1が「単独では不可能・2人なら可能」であることの検算も
+      # ここに含まれているので、壊れたまま公開されることはない。
+      - run: npm test
+      - run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

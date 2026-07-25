@@ -272,7 +272,19 @@ export class Game {
       size: 13,
       align: "center",
     });
-    return y + 20;
+
+    // 非公式ファン作品である旨は、README だけでなく画面上にも常時出す。
+    // 一般公開する以上、リンクを踏まずに開いた人にも伝わる必要がある。
+    r.setAlpha(0.55);
+    r.text(
+      "非公式のファン作品です / Unofficial fan project, not affiliated with Anthropic",
+      VIEW_W / 2,
+      y + 32,
+      { color: PALETTE.textDim, size: 11, align: "center" },
+    );
+    r.setAlpha(1);
+
+    return y + 44;
   }
 
   private drawControlRow(
