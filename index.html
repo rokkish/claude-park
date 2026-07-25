@@ -209,6 +209,84 @@
           gap: 4vw;
         }
       }
+
+      /*
+       * 縦画面では操作帯が入り切らない（幅390pxの端末で必要幅は約554px）。
+       * 2行に折り返しても、ステージが 20:9 と横長なのでゲーム画面は
+       * 390x175 まで縮み、実際のプレイ領域は約50pxしか残らない。
+       * 遊べない状態を出すより、横向きを促す方が正直。
+       *
+       * ただし幅が足りるなら縦でも遊べる。必要幅は概ね
+       *   6.3 * ボタン径 + 56 + 8vw
+       * で、ボタン径が上限 92px に張り付く大画面では約 691px が分岐点。
+       * タブレットの縦持ち（iPad 768px なら canvas 768x345）は十分遊べるので
+       * 締め出さないよう、orientation ではなく幅で判定する。
+       * この規則は上書きのため必ず他の touch-mode 規則より後に置く。
+       */
+      #rotate-hint {
+        display: none;
+      }
+
+      @media (orientation: portrait) and (max-width: 699px) {
+        body.touch-mode #touch-controls,
+        body.touch-mode #sys-buttons {
+          display: none;
+        }
+
+        body.touch-mode #rotate-hint {
+          position: fixed;
+          inset: 0;
+          z-index: 10;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 22px;
+          padding: 24px;
+          text-align: center;
+          background: var(--bg);
+          color: var(--text);
+          font: 400 16px/1.6 system-ui, sans-serif;
+        }
+      }
+
+      #rotate-hint .icon {
+        width: 84px;
+        height: 84px;
+        color: var(--p1);
+        animation: tilt 2.4s ease-in-out infinite;
+      }
+
+      #rotate-hint .lead {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 600;
+      }
+
+      #rotate-hint .sub {
+        margin: 0;
+        color: var(--dim);
+        font-size: 14px;
+      }
+
+      @keyframes tilt {
+        0%,
+        40% {
+          transform: rotate(0deg);
+        }
+        60%,
+        100% {
+          transform: rotate(-90deg);
+        }
+      }
+
+      /* 動きに敏感な人向け。回転アニメは情報の本体ではないので止めてよい。 */
+      @media (prefers-reduced-motion: reduce) {
+        #rotate-hint .icon {
+          animation: none;
+          transform: rotate(-90deg);
+        }
+      }
     </style>
   </head>
   <body>
@@ -235,6 +313,35 @@
           </div>
           <button class="jump" data-btn="p1-jump" aria-label="P2 ジャンプ">▲</button>
         </div>
+      </div>
+
+      <!-- 縦画面のみ表示。CSS だけで切り替わるので JS は関与しない。 -->
+      <div id="rotate-hint">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect
+            x="7"
+            y="2"
+            width="10"
+            height="20"
+            rx="2.5"
+            stroke="currentColor"
+            stroke-width="1.6"
+          />
+          <line
+            x1="10.5"
+            y1="19"
+            x2="13.5"
+            y2="19"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+          />
+        </svg>
+        <p class="lead">横向きにしてください</p>
+        <p class="sub">
+          ステージが横長のため、縦画面では2人ぶんの操作ボタンが収まりません。<br />
+          端末の画面回転ロックがかかっている場合は解除してください。
+        </p>
       </div>
 
       <div id="sys-buttons">
