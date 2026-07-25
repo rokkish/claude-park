@@ -116,7 +116,8 @@
       .pad {
         display: flex;
         align-items: center;
-        gap: 14px;
+        /* 詰めすぎると誤爆、離しすぎると同時押しが遠い。指1本ぶんの隙間。 */
+        gap: 10px;
       }
 
       [data-btn] {
@@ -131,25 +132,24 @@
         /* pointer-events は既定のまま。elementFromPoint がこの要素を返す必要がある。 */
       }
 
-      /* 左右は隙間なく隣接させ、指を離さず左右へ切り替えられるロッカーにする。
-         離して置くと切り替えのたびに一度入力が途切れ、微調整が効かなくなる。 */
-      .rocker {
-        display: flex;
-      }
-
-      .rocker [data-btn] {
+      /*
+       * 並びは 左 / ジャンプ / 右。
+       * ジャンプを端に置くと「左+ジャンプ」が両端に離れて同時押しが遠くなる。
+       * 中央に置けば左右どちらとの組み合わせも隣接した2つで済み、距離が揃う。
+       * 2人で1台を共有する都合上、各自が使えるのは片手の指2本程度なので
+       * 移動距離がそのまま押しやすさになる。
+       *
+       * 引き換えに、左右を隣接させて指を離さず切り替えるロッカーは使えない。
+       * 実機で同時押しのしづらさの方が問題だったため、そちらを優先した。
+       */
+      .pad [data-btn] {
         width: var(--btn-size);
         height: var(--btn-size);
-        border-radius: 14px 0 0 14px;
-      }
-
-      .rocker [data-btn]:last-child {
-        border-radius: 0 14px 14px 0;
-        border-left-width: 1px;
+        border-radius: 14px;
       }
 
       /* ジャンプはタイミングが要求されるので一回り大きく、指が迷わない円形に。 */
-      .jump {
+      .pad .jump {
         width: var(--jump-size);
         height: var(--jump-size);
         border-radius: 50%;
@@ -217,8 +217,9 @@
        * 遊べない状態を出すより、横向きを促す方が正直。
        *
        * ただし幅が足りるなら縦でも遊べる。必要幅は概ね
-       *   6.3 * ボタン径 + 56 + 8vw
-       * で、ボタン径が上限 92px に張り付く大画面では約 691px が分岐点。
+       *   (ボタン径x2 + ジャンプ径 + 隙間x2) x 2人 + 8vw + 28
+       * で、ボタン径が上限 92px に張り付く大画面では約 704px が分岐点。
+       * しきい値はそこに余裕を見て 709px に置く。
        * タブレットの縦持ち（iPad 768px なら canvas 768x345）は十分遊べるので
        * 締め出さないよう、orientation ではなく幅で判定する。
        * この規則は上書きのため必ず他の touch-mode 規則より後に置く。
@@ -227,7 +228,7 @@
         display: none;
       }
 
-      @media (orientation: portrait) and (max-width: 699px) {
+      @media (orientation: portrait) and (max-width: 709px) {
         body.touch-mode #touch-controls,
         body.touch-mode #sys-buttons {
           display: none;
@@ -299,19 +300,15 @@
 
       <div id="touch-controls">
         <div class="pad pad-p1">
-          <div class="rocker">
-            <button data-btn="p0-left" aria-label="P1 左">◀</button>
-            <button data-btn="p0-right" aria-label="P1 右">▶</button>
-          </div>
+          <button data-btn="p0-left" aria-label="P1 左">◀</button>
           <button class="jump" data-btn="p0-jump" aria-label="P1 ジャンプ">▲</button>
+          <button data-btn="p0-right" aria-label="P1 右">▶</button>
         </div>
 
         <div class="pad pad-p2">
-          <div class="rocker">
-            <button data-btn="p1-left" aria-label="P2 左">◀</button>
-            <button data-btn="p1-right" aria-label="P2 右">▶</button>
-          </div>
+          <button data-btn="p1-left" aria-label="P2 左">◀</button>
           <button class="jump" data-btn="p1-jump" aria-label="P2 ジャンプ">▲</button>
+          <button data-btn="p1-right" aria-label="P2 右">▶</button>
         </div>
       </div>
 
