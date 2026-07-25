@@ -76,6 +76,12 @@ export class Game {
   /** 画面上のタッチボタンで遊んでいるか。操作説明の文面だけを切り替える。 */
   private readonly touchMode: boolean;
 
+  /**
+   * 操作説明の表示率 1..0。最初の入力で 0 へ向かう。
+   * 読み終えた説明が画面中央を占め続けると、ステージが縦方向を使えない。
+   */
+  private controlsAlpha = 1;
+
   constructor(
     private readonly input: InputSource,
     stageData: StageData | StageData[],
@@ -224,9 +230,15 @@ export class Game {
   /** SPEC §5.3 の更新順序。ここの順番を崩すと1フレーム遅延バグの温床になる。 */
   private simulate(dt: number): void {
     // 1-3. 入力サンプリングと速度更新（移動はまだしない）
+    let anyInput = false;
     for (const p of this.players) {
-      p.updateVelocity(dt, this.input.sample(p.index));
+      const i = this.input.sample(p.index);
+      if (i.left || i.right || i.jumpHeld) anyInput = true;
+      p.updateVelocity(dt, i);
     }
+    // 一度でも操作されたら説明を退ける。以後は復活させない
+    // （やり直しのたびに出ると邪魔になる）。
+    if (anyInput) this.controlsAlpha = Math.max(0, this.controlsAlpha - dt * 3);
 
     // 4. ギミック更新。Solid の開閉・移動はここで確定する。
     for (const g of this.stage.gimmicks) g.update(dt, this.ctx);
@@ -331,7 +343,11 @@ export class Game {
       align: "center",
     });
 
-    this.renderControls(r);
+    if (this.controlsAlpha > 0) {
+      r.setAlpha(this.controlsAlpha);
+      this.renderControls(r);
+      r.setAlpha(1);
+    }
 
     if (this._phase === "cleared") {
       r.setAlpha(0.55);
