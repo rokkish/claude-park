@@ -1,5 +1,10 @@
 # Claude Park
 
+[![Claude Park のプレイの様子](docs/claude-park-demo.gif)](https://rokkish.github.io/claude-park/)
+
+**▶ [ブラウザで遊ぶ](https://rokkish.github.io/claude-park/)**
+（[元動画 (mp4)](docs/claude-park-demo.mp4)）
+
 Pico Park 風の、ブラウザで動くローカル協力アクションパズル。
 **1台のキーボードを2人で共有して遊びます。**
 
