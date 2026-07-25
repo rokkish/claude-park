@@ -3,21 +3,23 @@
  * 実際の Game.render() をそのまま走らせるので、タイル・ギミック・Clawd の
  * 配置と配色を、ブラウザを開かずに確認できる。
  *
- *   npx vite-node scripts/preview-stage.ts out.png [pose]
+ *   npx vite-node scripts/preview-stage.ts out.png [stage] [pose] [touch]
  *
+ * stage: 1..N（既定 1）
  * pose:
- *   start  スポーン直後（既定）
- *   boost  P1 の頭に P2 が乗った状態
- *   open   P2 が感圧板を踏み、ゲートが開いた状態
- *   clear  鍵を取って2人がゴールに入った状態
+ *   start   スポーン直後（全ステージ共通・既定）
+ *   1-1: boost  P1 の頭に P2 が乗った状態
+ *        open   P2 が感圧板を踏み、ゲートが開いた状態
+ *        clear  鍵を取って2人がゴールに入った状態
+ *   1-2: both   2枚の板を同時に踏み、ゲートがラッチで開いた状態
+ *   1-3: bridge 板を踏んで橋が架かった状態
  */
 import { writeFileSync } from "node:fs";
 import { ScriptedInput, type PlayerInput } from "../src/engine/input";
 import { Game } from "../src/game/game";
 import { DT, TILE, VIEW_H, VIEW_W } from "../src/game/tuning";
-import type { StageData } from "../src/game/stageData";
 import { PALETTE } from "../src/art/palette";
-import stage01 from "../src/stages/stage-01.json";
+import { STAGES } from "../src/stages/index";
 import { Canvas, RecordingRenderer, encodePng, rasterize } from "./lib/recorder";
 
 const ZOOM = 2;
@@ -26,16 +28,25 @@ function idle(): PlayerInput {
   return { left: false, right: false, jumpHeld: false, jumpPressed: false };
 }
 
-// 第4引数に touch を渡すと、タッチ操作時の操作説明で焼き出す
-const touchMode = process.argv[4] === "touch";
+const out = process.argv[2] ?? "stage-preview.png";
+const stageNo = Number(process.argv[3] ?? 1);
+const pose = process.argv[4] ?? "start";
+const touchMode = process.argv[5] === "touch";
+
+const data = STAGES[stageNo - 1];
+if (!data) throw new Error(`ステージ ${stageNo} は存在しません (1..${STAGES.length})`);
+
 const input = new ScriptedInput([idle(), idle()]);
-const game = new Game(input, stage01 as StageData, { touchMode });
+const game = new Game(input, data, { touchMode });
 game.start();
 
-const pose = process.argv[3] ?? "start";
+const step = (n: number): void => {
+  for (let i = 0; i < n; i++) game.step(DT);
+};
 const [p1, p2] = game.players;
 
 switch (pose) {
+  // --- 1-1 Boost & Hold ---
   case "boost":
     p1!.teleport(12 * TILE, 15 * TILE);
     p2!.teleport(12 * TILE, 14 * TILE);
@@ -46,16 +57,29 @@ switch (pose) {
     break;
   case "clear":
     p1!.teleport(25 * TILE, 15 * TILE); // 鍵の上
-    for (let i = 0; i < 5; i++) game.step(DT);
+    step(5);
     p1!.teleport(35 * TILE, 15 * TILE);
     p2!.teleport(35 * TILE + 30, 15 * TILE);
     break;
+
+  // --- 1-2 Both at Once: 2枚同時 ---
+  case "both":
+    p1!.teleport(4 * TILE, 15 * TILE); // 地上の板A
+    p2!.teleport(19 * TILE, 12 * TILE); // 棚の上の板B
+    break;
+
+  // --- 1-3 Bridge: 踏むと橋が架かる ---
+  case "bridge":
+    p1!.teleport(12 * TILE, 12 * TILE); // 手前の板
+    p2!.teleport(16 * TILE, 12 * TILE); // 渡ろうとしている側
+    break;
+
   default:
     break;
 }
 
 // ギミックの状態（ゲートの開閉など）を落ち着かせる
-for (let i = 0; i < 10; i++) game.step(DT);
+step(10);
 
 const r = new RecordingRenderer(VIEW_W, VIEW_H);
 game.render(r);
@@ -63,6 +87,7 @@ game.render(r);
 const canvas = new Canvas(VIEW_W * ZOOM, VIEW_H * ZOOM, PALETTE.letterbox);
 rasterize(canvas, r.ops, ZOOM);
 
-const out = process.argv[2] ?? "stage-preview.png";
 writeFileSync(out, encodePng(canvas));
-console.log(`${out} (${canvas.w}x${canvas.h}) pose=${pose} phase=${game.phase}`);
+console.log(
+  `${out} (${canvas.w}x${canvas.h}) stage=${stageNo} "${data.name}" pose=${pose} phase=${game.phase} solids=${game.stage.solidBoxes().length}`,
+);

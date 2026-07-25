@@ -151,6 +151,9 @@ export class CompositeInput implements InputSource {
 
 /** テストやリプレイ用。手で組み立てた入力を流し込む。 */
 export class ScriptedInput implements InputSource {
+  /** Enter / KeyR のようなグローバルキー。1ステップだけ押された状態になる。 */
+  private keys = new Set<string>();
+
   constructor(public inputs: PlayerInput[] = []) {}
 
   sample(playerIndex: number): PlayerInput {
@@ -164,16 +167,22 @@ export class ScriptedInput implements InputSource {
     );
   }
 
+  /** 次の1ステップだけ code を押下扱いにする。 */
+  press(code: string): void {
+    this.keys.add(code);
+  }
+
   endStep(): void {
     for (const i of this.inputs) i.jumpPressed = false;
+    this.keys.clear();
   }
 
-  isPressed(): boolean {
-    return false;
+  isPressed(code: string): boolean {
+    return this.keys.has(code);
   }
 
-  wasPressed(): boolean {
-    return false;
+  wasPressed(code: string): boolean {
+    return this.keys.has(code);
   }
 
   dispose(): void {}

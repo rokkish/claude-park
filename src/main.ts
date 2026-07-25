@@ -27,10 +27,9 @@ const input = new CompositeInput([
 ]);
 
 const renderer = new Renderer2D(canvas);
-const stage = STAGES[0];
-if (!stage) throw new Error("ステージが1つも登録されていません");
+if (STAGES.length === 0) throw new Error("ステージが1つも登録されていません");
 
-const game = new Game(input, stage, { touchMode });
+const game = new Game(input, STAGES, { touchMode });
 
 const loop = new GameLoop({
   step: (dt) => game.step(dt),

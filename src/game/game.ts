@@ -42,14 +42,19 @@ const CAP_GAP = 5;
 
 export class Game {
   /** ロード済みステージ。HUD と結合テストから参照する。 */
-  readonly stage: Stage;
+  private _stage: Stage;
   /** 生きているプレイヤー。配列は再代入せず中身だけ入れ替える。 */
   readonly players: Player[] = [];
+
+  /** 全ステージの生データ。単一の StageData を渡した場合も長さ1の配列に正規化する。 */
+  private readonly stages: readonly StageData[];
+  /** `stages` 内の現在位置。クリア後の Enter で進み、末尾の次は先頭に戻る。 */
+  private stageIndex = 0;
 
   private world: PhysicsWorld;
   private readonly signals = new SignalBus();
   private readonly inventory = new Inventory();
-  private readonly view: CameraView;
+  private view: CameraView;
   private readonly ctx: GimmickContext;
 
   private _phase: GamePhase = "title";
@@ -61,28 +66,35 @@ export class Game {
 
   constructor(
     private readonly input: InputSource,
-    stageData: StageData,
+    stageData: StageData | StageData[],
     opts: { touchMode?: boolean } = {},
   ) {
     this.touchMode = opts.touchMode ?? false;
-    this.stage = loadStage(stageData);
-    this.world = { grid: this.stage.grid, solidBoxes: [], actors: [] };
+    this.stages = Array.isArray(stageData) ? stageData : [stageData];
+    if (this.stages.length === 0) throw new Error("Game: ステージが1つも登録されていません");
+    this._stage = loadStage(this.stages[0]!);
+    this.world = { grid: this._stage.grid, solidBoxes: [], actors: [] };
     this.view = fitCamera(
-      this.stage.grid.widthPx,
-      this.stage.grid.heightPx,
+      this._stage.grid.widthPx,
+      this._stage.grid.heightPx,
       VIEW_W,
       VIEW_H,
     );
     this.ctx = {
       signals: this.signals,
       inventory: this.inventory,
-      grid: this.stage.grid,
+      grid: this._stage.grid,
       players: this.players,
       requestClear: () => {
         this._phase = "cleared";
       },
     };
     this.resetStage();
+  }
+
+  /** ロード済みステージ。HUD と結合テストから参照する。 */
+  get stage(): Stage {
+    return this._stage;
   }
 
   private resetStage(): void {
@@ -97,6 +109,31 @@ export class Game {
     this.world.actors.length = 0;
     this.world.actors.push(...this.players);
     this.world.solidBoxes = this.stage.solidBoxes();
+  }
+
+  /**
+   * `stages` 内の指定インデックスへ切り替える。ステージごとに TileGrid
+   * インスタンスが変わるので、それを参照している world / ctx / view も
+   * ここで一緒に張り替えないと、古いステージの当たり判定のまま進んでしまう。
+   */
+  private switchToStage(index: number): void {
+    this.stageIndex = index;
+    this._stage = loadStage(this.stages[index]!);
+    this.world = { grid: this._stage.grid, solidBoxes: [], actors: [] };
+    this.ctx.grid = this._stage.grid;
+    this.view = fitCamera(
+      this._stage.grid.widthPx,
+      this._stage.grid.heightPx,
+      VIEW_W,
+      VIEW_H,
+    );
+    this.resetStage();
+  }
+
+  /** クリア後、Enter で次のステージへ。最終ステージの次は先頭に戻る (要件: 進行はループ)。 */
+  private advanceStage(): void {
+    this.switchToStage((this.stageIndex + 1) % this.stages.length);
+    this._phase = "playing";
   }
 
   get phase(): GamePhase {
@@ -126,6 +163,10 @@ export class Game {
       case "cleared":
         // クリア後も落下だけは進めて、絵が止まって見えないようにする
         this.simulate(dt);
+        // タイトルには戻さず、そのまま次のステージへ (SPEC §8.2 のステージ追加を
+        // 実際に遊べる形にするための進行)。タッチ環境では #stage-area が
+        // タップで Enter を送るので、この分岐だけで両対応になる。
+        if (this.input.wasPressed("Enter")) this.advanceStage();
         break;
     }
 
@@ -220,7 +261,11 @@ export class Game {
 
     // 左上は外部リンクのボタンが被りうるので上部中央に置く
     // （リンクは画面座標、こちらは canvas 座標なので、狭い窓では重なる）。
-    r.text(this.stage.data.name, VIEW_W / 2, 30, {
+    // Pico Park 風に「ワールド-ステージ」を前置する。ワールドは今は1つしか
+    // 無いので固定値。第2ワールドができたら StageData に world フィールドを
+    // 足し、stages/index.ts の並び順ではなくそこから持ってくるようにする。
+    const WORLD = 1;
+    r.text(`${WORLD}-${this.stageIndex + 1}  ${this.stage.data.name}`, VIEW_W / 2, 30, {
       color: PALETTE.textDim,
       size: 14,
       align: "center",
@@ -233,12 +278,20 @@ export class Game {
       // 以下はクリア演出。操作説明の上に重ねる。
       r.rect(0, 0, VIEW_W, VIEW_H, "#000000");
       r.setAlpha(1);
-      r.text("STAGE CLEAR", VIEW_W / 2, VIEW_H / 2 - 6, {
+      // 最終ステージだけは「一周した」ことを示す文言にする。Enter (タッチは
+      // タップ) は次に進んでも最後は同じキーで先頭ステージに戻るだけなので、
+      // 案内文もそれに合わせて変える。
+      const isLastStage = this.stageIndex === this.stages.length - 1;
+      r.text(isLastStage ? "ALL STAGES CLEAR" : "STAGE CLEAR", VIEW_W / 2, VIEW_H / 2 - 6, {
         color: PALETTE.accent,
         size: 40,
         align: "center",
       });
-      r.text("R でもう一度", VIEW_W / 2, VIEW_H / 2 + 30, {
+      const nextHint = this.touchMode ? "画面をタップで次のステージ" : "Enter で次のステージ";
+      const wrapHint = this.touchMode
+        ? "画面をタップで最初のステージへ"
+        : "Enter で最初のステージへ";
+      r.text(isLastStage ? wrapHint : nextHint, VIEW_W / 2, VIEW_H / 2 + 30, {
         color: PALETTE.textPrimary,
         size: 16,
         align: "center",
