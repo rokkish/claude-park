@@ -70,7 +70,7 @@ npm run build      # 型検査 + 本番ビルド
 
 ```bash
 npx vite-node scripts/preview-clawd.ts out.png              # キャラの各ポーズ
-npx vite-node scripts/preview-stage.ts out.png boost        # start|boost|open|clear
+npx vite-node scripts/preview-stage.ts out.png 5 start       # out.png [stage] [pose]
 ```
 
 ## 設計
@@ -88,6 +88,29 @@ npx vite-node scripts/preview-stage.ts out.png boost        # start|boost|open|c
 変更する場合は SPEC §7.5 の検算表と `tests/stage01.test.ts` を必ず併せて更新してください。
 
 ## リリース履歴
+
+### v1.1.0 — 2026-07-26
+
+World 2（キーアイデア: **動く足場**）の3ステージを追加。全6ステージになりました。
+
+| | ステージ | 見せる面 |
+| --- | --- | --- |
+| 2-1 | Ferry | 相方が押している間だけ動く渡し船。両岸の板で送り合う |
+| 2-2 | Counterweight | 1つの信号が2つの足場を**逆向き**に動かす |
+| 2-3 | Tandem | 常時往復する足場でタイミング。渡った先はブーストで登る |
+
+逆位相は専用の仕組みではなく、始点と終点を入れ替えるだけで実現しています。
+
+**基盤の変更**
+
+- 仕様書 §3.4 に書いてあったのに未実装だった「Solid が乗員を運ぶ」を実装。
+  それまでは床を動かしてもプレイヤーをすり抜け、めり込んだ瞬間に圧殺していた
+- 動く足場ギミック `platform` を追加。信号連動と常時往復の両対応
+- レイアウトの寸法計算を CSS の `calc` から TypeScript へ移し、実在7端末を
+  縦横で回すテストで固定（過去2回この層でリグレッションを出しているため）
+- 操作説明が最初の入力で消えるようにした。画面中央を占め続けると
+  ステージが縦方向を使えない
+- `?stage=2-1` で任意のステージから開始できる（動作確認用）
 
 ### v1.0.0 — 2026-07-25
 

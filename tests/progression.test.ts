@@ -19,6 +19,9 @@ const CLEAR_SETUP: Record<string, { goal: { x: number; y: number }; key?: { x: n
   "stage-01": { goal: { x: 35, y: 15 }, key: { x: 25, y: 15 } },
   "stage-02": { goal: { x: 34, y: 15 } },
   "stage-03": { goal: { x: 34, y: 12 } },
+  "stage-04": { goal: { x: 34, y: 12 } },
+  "stage-05": { goal: { x: 33, y: 9 } },
+  "stage-06": { goal: { x: 29, y: 9 } },
 };
 
 function newGame(stages: StageData | StageData[] = STAGES): {
@@ -49,15 +52,22 @@ function forceClear(game: Game, step: (n?: number) => void): void {
 }
 
 describe("ステージ進行", () => {
-  it("3ステージが登録されている", () => {
-    expect(STAGES.map((s) => s.id)).toEqual(["stage-01", "stage-02", "stage-03"]);
+  it("6ステージ（ワールド1・2 各3本）が登録されている", () => {
+    expect(STAGES.map((s) => s.id)).toEqual([
+      "stage-01",
+      "stage-02",
+      "stage-03",
+      "stage-04",
+      "stage-05",
+      "stage-06",
+    ]);
   });
 
   it("クリア後の Enter で次のステージへ進み、最後は先頭に戻る", () => {
     const { game, input, step } = newGame();
     const visited: string[] = [];
 
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 7; i++) {
       visited.push(game.stage.data.id);
       forceClear(game, step);
       expect(game.phase).toBe("cleared");
@@ -65,7 +75,15 @@ describe("ステージ進行", () => {
       step();
     }
 
-    expect(visited).toEqual(["stage-01", "stage-02", "stage-03", "stage-01"]);
+    expect(visited).toEqual([
+      "stage-01",
+      "stage-02",
+      "stage-03",
+      "stage-04",
+      "stage-05",
+      "stage-06",
+      "stage-01",
+    ]);
   });
 
   it("進行後はタイトルに戻らず、そのまま遊べる状態になる", () => {
@@ -110,33 +128,32 @@ describe("ステージ進行", () => {
     expect(game.phase).toBe("playing");
   });
 
-  it("isAllCleared は最終ステージをクリアした瞬間だけ真になる", () => {
+  it("isAllCleared は最終ステージ(2-3)をクリアした瞬間だけ真になる", () => {
     const { game, input, step } = newGame();
+    const nonFinalIds = ["stage-01", "stage-02", "stage-03", "stage-04", "stage-05"];
 
-    // 1-1 クリア時点ではまだ先がある
+    // 途中の5ステージは、クリアしても isAllCleared はまだ立たない
+    for (const id of nonFinalIds) {
+      expect(game.stage.data.id).toBe(id);
+      forceClear(game, step);
+      expect(game.phase).toBe("cleared");
+      expect(game.isAllCleared).toBe(false);
+
+      input.press("Enter");
+      step();
+      expect(game.isAllCleared).toBe(false); // プレイ中
+    }
+
+    // 最終ステージ (stage-06 = 2-3) クリアで全踏破
     forceClear(game, step);
-    expect(game.phase).toBe("cleared");
-    expect(game.isAllCleared).toBe(false);
-
-    input.press("Enter");
-    step();
-    expect(game.isAllCleared).toBe(false); // プレイ中
-
-    // 1-2 クリア
-    forceClear(game, step);
-    expect(game.isAllCleared).toBe(false);
-    input.press("Enter");
-    step();
-
-    // 1-3 クリアで全踏破
-    forceClear(game, step);
-    expect(game.stage.data.id).toBe("stage-03");
+    expect(game.stage.data.id).toBe("stage-06");
     expect(game.isAllCleared).toBe(true);
 
     // 先頭に戻ったら降りる
     input.press("Enter");
     step();
     expect(game.isAllCleared).toBe(false);
+    expect(game.stage.data.id).toBe("stage-01");
   });
 
   it("単一ステージを渡した場合も動く（既存の呼び出しを壊さない）", () => {
