@@ -1,5 +1,6 @@
 import { setupFullscreen } from "./engine/fullscreen";
 import { setupShareButton } from "./engine/share";
+import { formatTime } from "./engine/time";
 import { CompositeInput, KeyboardInput } from "./engine/input";
 import { GameLoop } from "./engine/loop";
 import { Renderer2D } from "./engine/renderer2d";
@@ -33,7 +34,13 @@ if (STAGES.length === 0) throw new Error("ステージが1つも登録されて�
 const game = new Game(input, STAGES, { touchMode });
 
 // 全ステージ踏破中だけシェアボタンを出す。状態が変わったときだけ DOM を触る。
-const syncShareButton = setupShareButton(() => game.isAllCleared);
+const syncShareButton = setupShareButton(
+  () => game.isAllCleared,
+  () => ({
+    timeText: formatTime(game.runSecondsElapsed),
+    stageCount: game.stageCount,
+  }),
+);
 
 const loop = new GameLoop({
   step: (dt) => game.step(dt),

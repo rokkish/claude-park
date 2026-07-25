@@ -21,6 +21,7 @@ import { loadStage, type Stage } from "./stage";
 import type { StageData } from "./stageData";
 import type { GimmickContext } from "./gimmicks/types";
 import { VIEW_H, VIEW_W } from "./tuning";
+import { formatTime } from "../engine/time";
 // 副作用 import: 全ギミックの registry 登録。loadStage より前に必ず評価される必要がある。
 import "./gimmicks/index";
 
@@ -61,6 +62,14 @@ export class Game {
   /** 描画アニメ用の経過秒。物理には使わない。 */
   private time = 0;
 
+  /**
+   * 計測時間。実時間ではなくシミュレーション時間を積む（SPEC §2.1 の固定
+   * タイムステップ）。タブを裏に回してもフレーム落ちしても、実際に遊んだ
+   * ぶんだけが進み、テストでも再現できる。"playing" の間だけ進行する。
+   */
+  private stageSeconds = 0;
+  private runSeconds = 0;
+
   /** 画面上のタッチボタンで遊んでいるか。操作説明の文面だけを切り替える。 */
   private readonly touchMode: boolean;
 
@@ -98,6 +107,9 @@ export class Game {
   }
 
   private resetStage(): void {
+    // R でのやり直しもここを通る。ステージ計測だけ 0 に戻し、通し計測は
+    // 戻さない（やり直したぶんは通しタイムに乗るのが素直）。
+    this.stageSeconds = 0;
     this.stage.reset();
     this.inventory.clear();
     this.signals.clearFrame();
@@ -132,7 +144,10 @@ export class Game {
 
   /** クリア後、Enter で次のステージへ。最終ステージの次は先頭に戻る (要件: 進行はループ)。 */
   private advanceStage(): void {
-    this.switchToStage((this.stageIndex + 1) % this.stages.length);
+    const next = (this.stageIndex + 1) % this.stages.length;
+    // 先頭に戻る＝新しい通しの開始なので、通し計測をここで 0 に戻す。
+    if (next === 0) this.runSeconds = 0;
+    this.switchToStage(next);
     this._phase = "playing";
   }
 
@@ -149,9 +164,24 @@ export class Game {
     return this._phase === "cleared" && this.isLastStage;
   }
 
+  /** 現在のステージの経過秒。R でやり直すと 0 に戻る。 */
+  get stageSecondsElapsed(): number {
+    return this.stageSeconds;
+  }
+
+  /** 通し（先頭ステージから）の経過秒。R では戻さない。 */
+  get runSecondsElapsed(): number {
+    return this.runSeconds;
+  }
+
+  get stageCount(): number {
+    return this.stages.length;
+  }
+
   /** タイトルを飛ばして開始する。Enter 押下と結合テストの入口。 */
   start(): void {
     this._phase = "playing";
+    this.runSeconds = 0;
   }
 
   step(dt: number): void {
@@ -167,6 +197,8 @@ export class Game {
         if (this.input.wasPressed("Enter")) this.start();
         break;
       case "playing":
+        this.stageSeconds += dt;
+        this.runSeconds += dt;
         this.simulate(dt);
         break;
       case "cleared":
@@ -280,6 +312,14 @@ export class Game {
       align: "center",
     });
 
+    // 計測を常時見せる。ミリ秒まで出すなら、クリア時だけでなく走っている
+    // 最中に見えないと意味がない。等幅にはできないので中央寄せで暴れを抑える。
+    r.text(formatTime(this.stageSeconds), VIEW_W / 2, 52, {
+      color: PALETTE.textDim,
+      size: 13,
+      align: "center",
+    });
+
     this.renderControls(r);
 
     if (this._phase === "cleared") {
@@ -290,18 +330,28 @@ export class Game {
       // 最終ステージだけは「一周した」ことを示す文言にする。Enter (タッチは
       // タップ) は次に進んでも最後は同じキーで先頭ステージに戻るだけなので、
       // 案内文もそれに合わせて変える。
-      r.text(this.isLastStage ? "ALL STAGES CLEAR" : "STAGE CLEAR", VIEW_W / 2, VIEW_H / 2 - 6, {
+      r.text(this.isLastStage ? "ALL STAGES CLEAR" : "STAGE CLEAR", VIEW_W / 2, VIEW_H / 2 - 20, {
         color: PALETTE.accent,
         size: 40,
         align: "center",
       });
+
+      // 最終ステージでは通しタイム、途中ではそのステージのタイムを出す。
+      const label = this.isLastStage ? "TOTAL" : "TIME";
+      const seconds = this.isLastStage ? this.runSeconds : this.stageSeconds;
+      r.text(`${label}  ${formatTime(seconds)}`, VIEW_W / 2, VIEW_H / 2 + 22, {
+        color: PALETTE.textPrimary,
+        size: 24,
+        align: "center",
+      });
+
       const nextHint = this.touchMode ? "画面をタップで次のステージ" : "Enter で次のステージ";
       const wrapHint = this.touchMode
         ? "画面をタップで最初のステージへ"
         : "Enter で最初のステージへ";
-      r.text(this.isLastStage ? wrapHint : nextHint, VIEW_W / 2, VIEW_H / 2 + 30, {
-        color: PALETTE.textPrimary,
-        size: 16,
+      r.text(this.isLastStage ? wrapHint : nextHint, VIEW_W / 2, VIEW_H / 2 + 58, {
+        color: PALETTE.textDim,
+        size: 15,
         align: "center",
       });
     }
