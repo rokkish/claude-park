@@ -2,124 +2,154 @@ import type { Renderer } from "../engine/renderer";
 import type { CharacterSkin, CharacterState } from "./skin";
 
 /**
- * Clawd の手描き風ベクタ描画 (SPEC §6.1, §6.2)。
- * ドット絵ではなく ctx.arc / quadraticCurveTo による曲線で構成する。
- * P1 / P2 は完全に同じ形で s.color だけが違う (SPEC §6.3)。
+ * Clawd のピクセルアート描画 (SPEC §6.1, §6.2)。
+ * リファレンス src/art/claudecode.webp に合わせた、陰影の無いフラットな単色スプライト。
+ *
+ * スプライトは「1スプライトピクセル = ux × uy」のグリッドで組む。
+ * 目と脚の列位置はリファレンスと同一（12列の胴体に対して 目=2,9 / 脚=1,3,8,10）。
+ *
+ *   列: 0 1 2 3 4 5 6 7 8 91011     行:  0 ┌────────────┐
+ *                                         3 │  ■      ■  │ 目
+ *                                         5 ◀│            │▶ 腕
+ *                                        10 └─┬─┬────┬─┬─┘
+ *                                        12   ┘ └    ┘ └   脚
+ *
+ * 胴体は当たり判定(20px)より広い 24px = 12列で描き、左右に 2px ずつはみ出させる。
+ * リファレンスの横長シルエットに寄せるための措置で、当たり判定は変えていない
+ * （PLAYER_W を広げると 24px 幅のゲートを通れなくなり、ステージ1が壊れる）。
+ *
+ * 縦は当たり判定いっぱいの 12行を使う。頭の上端＝当たり判定の上端が一致しないと、
+ * 「頭に乗る」ゲームで着地位置が見た目と食い違ってしまうため、ここは詰められない。
+ * 結果としてリファレンス(胴体 12列 x 8行)より胴体が縦長になっている。
  */
 
-/** 胴体の角丸半径。丸みのあるずんぐり体型のかなめ。 */
-const BODY_RADIUS = 8;
+/** スプライトのグリッド定義。単位はスプライトピクセル。 */
+const BODY_COLS = 12;
+const BODY_ROWS = 10;
+const LEG_ROWS = 2;
+const TOTAL_ROWS = BODY_ROWS + LEG_ROWS; // 12
 
-/** 呼吸バウンスの周期(rad/s)と振幅(px)。s.time 駆動なので2体が完全に独立して呼吸できる。 */
-const BREATH_SPEED = 2.4;
-const BREATH_AMPLITUDE = 1.1;
-/** これ未満の速度なら「ほぼ静止」とみなして呼吸を出す。 */
-const STILL_VX = 8;
-const STILL_VY = 8;
+/** 胴体が当たり判定から左右にはみ出す量（列）。 */
+const BODY_OVERHANG = 1;
 
-const EYE_R = 2.6;
-const EYE_R_AIRBORNE = 3.4;
+/** 脚の左端の列。リファレンスと同じ 1,3 / 8,10。 */
+const LEG_COLS = [1, 3, 8, 10] as const;
+
+/** 目の左端の列（正面向き）。facing に応じて 1 列ずらす。 */
+const EYE_COLS = [2, 9] as const;
+const EYE_ROW = 3;
+const EYE_ROWS_NORMAL = 2;
+const EYE_ROWS_AIRBORNE = 3;
+const EYE_ROWS_STRAINING = 1;
+
+/** 左右に突き出た腕。 */
+const ARM_ROW = 5;
+const ARM_ROWS = 2;
+
+/** 歩行アニメの切り替え距離(px)。位置駆動なので足が滑らない。 */
+const STRIDE_PX = 5;
+/** これを超える速度で接地していれば歩行中とみなす。 */
+const WALK_VX = 12;
+/** 呼吸とみなす静止しきい値。 */
+const STILL_V = 8;
 
 export class ClawdSkin implements CharacterSkin {
   draw(r: Renderer, s: CharacterState): void {
     r.save();
 
-    const centerX = s.x + s.w / 2;
+    // 当たり判定 20px の左右に BODY_OVERHANG 列ずつはみ出して胴体 12列ぶんになる。
+    const ux = s.w / (BODY_COLS - BODY_OVERHANG * 2);
+    const uy = s.h / TOTAL_ROWS;
+    const bodyX = s.x - BODY_OVERHANG * ux;
+    const bodyW = BODY_COLS * ux;
     const groundY = s.y + s.h;
+    const centerX = s.x + s.w / 2;
 
-    // 影は地面に固定。スカッシュで潰れているときは接地面積が広がって見えるよう少し広げる。
-    const shadowSpread = Math.max(0.7, Math.min(1.4, 2 - s.squash));
-    const shadowAlpha = s.grounded ? 1 : 0.55;
-    r.setAlpha(shadowAlpha);
-    r.ellipse(centerX, groundY + 1, s.w * 0.42 * shadowSpread, 3.5, s.color.shadow);
-    r.setAlpha(1);
+    // 接地影は描かない。4本脚の隙間を横一直線に埋めてしまい、
+    // 脚が板の上に載っているように見えてシルエットが濁るため
+    // （リファレンスも陰影なしのフラットな一枚絵）。
 
-    // 接地してほぼ静止しているときだけ、わずかな呼吸バウンスを足す。
-    // s.time 駆動＝モジュール外に可変状態を持たないので2体が独立に呼吸できる。
-    const isNearlyStill =
-      s.grounded && Math.abs(s.vx) < STILL_VX && Math.abs(s.vy) < STILL_VY;
-    const breathBob = isNearlyStill ? Math.sin(s.time * BREATH_SPEED) * BREATH_AMPLITUDE : 0;
-    r.translate(0, -breathBob);
+    // 接地してほぼ静止しているときだけ、1px 単位の呼吸バウンス。
+    // s.time 駆動なのでモジュール外に可変状態を持たず、2体が独立に動く。
+    const still = s.grounded && Math.abs(s.vx) < STILL_V && Math.abs(s.vy) < STILL_V;
+    const breath = still ? Math.round(Math.sin(s.time * 2.2)) : 0;
+    r.translate(0, -breath);
 
-    // スカッシュ&ストレッチ: 胴体下端中央を不動点にして縦だけ scale する。
-    // ここを胴体の中心アンカーにすると足が地面から浮いて見えてしまうため、必ず下端で行う。
+    // スカッシュ&ストレッチ: 足元中央を不動点にする。
+    // 胴体中央を軸にすると足が地面から浮いて見えるため、必ず下端で行う。
+    // 横方向は 1/squash（完全な体積保存）だと胴体が元々 24px 幅あるぶん
+    // 着地時に潰れすぎて別物に見えるので、平方根で効きを弱めている。
     r.translate(centerX, groundY);
-    r.scale(1 / s.squash, s.squash);
+    r.scale(1 / Math.sqrt(s.squash), s.squash);
     r.translate(-centerX, -groundY);
 
-    this.drawAntenna(r, s, centerX);
-    this.drawBody(r, s);
-    this.drawFace(r, s, centerX);
+    this.drawArms(r, s, bodyX, bodyW, ux, uy);
+    this.drawLegs(r, s, bodyX, ux, uy);
+    // 胴体は腕と脚の付け根を隠すように後から重ねる（フラットな一枚のシルエットに見せる）。
+    r.rect(bodyX, s.y, bodyW, BODY_ROWS * uy, s.color.body);
+    this.drawEyes(r, s, bodyX, ux, uy);
 
     r.restore();
   }
 
-  private drawBody(r: Renderer, s: CharacterState): void {
-    r.roundRect(s.x, s.y, s.w, s.h, BODY_RADIUS, s.color.body);
-
-    // 下寄りの陰影で丸みのボリュームを出す。
-    r.ellipse(
-      s.x + s.w / 2,
-      s.y + s.h * 0.82,
-      s.w * 0.4,
-      s.h * 0.2,
-      s.color.bodyDark,
-    );
-
-    // 進行方向寄りのハイライトで光源感を出す。
-    r.ellipse(
-      s.x + s.w / 2 + s.facing * 2.5,
-      s.y + s.h * 0.4,
-      s.w * 0.26,
-      s.h * 0.28,
-      s.color.bodyLight,
-    );
+  private drawArms(
+    r: Renderer,
+    s: CharacterState,
+    bodyX: number,
+    bodyW: number,
+    ux: number,
+    uy: number,
+  ): void {
+    const y = s.y + ARM_ROW * uy;
+    const h = ARM_ROWS * uy;
+    r.rect(bodyX - ux, y, ux, h, s.color.body);
+    r.rect(bodyX + bodyW, y, ux, h, s.color.body);
   }
 
-  private drawAntenna(r: Renderer, s: CharacterState, centerX: number): void {
-    const baseX = centerX + s.facing * 1;
-    const baseY = s.y + 3;
-    const tipX = centerX + s.facing * 5;
-    const tipY = s.y - 7;
-    const ctrlX = centerX + s.facing * 2;
-    const ctrlY = s.y - 3;
+  private drawLegs(
+    r: Renderer,
+    s: CharacterState,
+    bodyX: number,
+    ux: number,
+    uy: number,
+  ): void {
+    const top = s.y + BODY_ROWS * uy;
+    const full = LEG_ROWS * uy;
 
-    const ctx = r.ctx;
-    ctx.save();
-    ctx.strokeStyle = s.color.bodyDark;
-    ctx.lineWidth = 2;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(baseX, baseY);
-    ctx.quadraticCurveTo(ctrlX, ctrlY, tipX, tipY);
-    ctx.stroke();
-    ctx.restore();
+    // 歩行は位置で駆動する。時間駆動だと移動速度と歩幅がずれて足が滑る。
+    const walking = s.grounded && Math.abs(s.vx) > WALK_VX;
+    const phase = walking ? Math.floor(Math.abs(s.x) / STRIDE_PX) & 1 : -1;
 
-    r.circle(tipX, tipY, 2.2, s.color.bodyLight);
+    LEG_COLS.forEach((col, i) => {
+      // 外側の脚(0,3)と内側の脚(1,2)を交互に持ち上げる2コマアニメ。
+      const isInner = i === 1 || i === 2;
+      const lifted = phase === 0 ? isInner : phase === 1 ? !isInner : false;
+      const h = lifted ? full - uy : full;
+      r.rect(bodyX + col * ux, top, ux, h, s.color.body);
+    });
   }
 
-  private drawFace(r: Renderer, s: CharacterState, centerX: number): void {
-    const eyeY = s.y + s.h * 0.42;
-    const eyeCenterX = centerX + s.facing * 2;
-    const eyeSpacing = s.w * 0.22;
-    const leftX = eyeCenterX - eyeSpacing;
-    const rightX = eyeCenterX + eyeSpacing;
+  private drawEyes(
+    r: Renderer,
+    s: CharacterState,
+    bodyX: number,
+    ux: number,
+    uy: number,
+  ): void {
+    // 表情は目の高さだけで表現する。フラットな単色スプライトなので
+    // 眉やハイライトを足すとリファレンスの質感から外れてしまう。
+    const rows = s.carrying
+      ? EYE_ROWS_STRAINING // 誰かを頭に乗せて踏ん張っている
+      : s.grounded
+        ? EYE_ROWS_NORMAL
+        : EYE_ROWS_AIRBORNE; // 空中では見開く
 
-    if (s.carrying) {
-      // 誰かを頭に乗せている: 踏ん張った・強張った表情にする（協力の核となる読み取り）。
-      const eyeRx = EYE_R;
-      const eyeRy = 1.3;
-      r.ellipse(leftX, eyeY, eyeRx, eyeRy, s.color.eye);
-      r.ellipse(rightX, eyeY, eyeRx, eyeRy, s.color.eye);
-
-      // 眉間を寄せた眉でさらに「踏ん張り」感を強調する。
-      const browY = eyeY - 4.5;
-      r.line(leftX - 3, browY - 1, leftX + 3, browY + 1.5, s.color.bodyDark, 1.6);
-      r.line(rightX + 3, browY - 1, rightX - 3, browY + 1.5, s.color.bodyDark, 1.6);
-    } else {
-      const eyeR = s.grounded ? EYE_R : EYE_R_AIRBORNE;
-      r.circle(leftX, eyeY, eyeR, s.color.eye);
-      r.circle(rightX, eyeY, eyeR, s.color.eye);
+    // 目線を進行方向へ1列寄せる。胴体の縁(列0と11)には食い込ませない。
+    const shift = s.facing > 0 ? 1 : -1;
+    const y = s.y + EYE_ROW * uy;
+    for (const col of EYE_COLS) {
+      const c = Math.min(BODY_COLS - 2, Math.max(1, col + shift));
+      r.rect(bodyX + c * ux, y, ux, rows * uy, s.color.eye);
     }
   }
 }

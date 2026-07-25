@@ -17,5 +17,7 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
+  // scripts/ は Node 専用の開発ツールなので含めない。
+  // ここに入れると @types/node がブラウザ向けの src まで汚染する。
   "include": ["src", "tests"]
 }
