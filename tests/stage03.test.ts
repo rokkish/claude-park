@@ -59,7 +59,7 @@ describe("反転ゲート（橋）の開閉", () => {
   it("誰も踏んでいないと橋は非Solid（谷が開いている）", () => {
     const { game, input } = newGame();
     run(game, input, 10);
-    expect(game.stage.solidBoxes()).toHaveLength(0);
+    expect(game.stage.solids()).toHaveLength(0);
   });
 
   it("近い方の板を踏むと橋がSolidになる", () => {
@@ -69,7 +69,7 @@ describe("反転ゲート（橋）の開閉", () => {
 
     run(game, input, 10);
 
-    expect(game.stage.solidBoxes()).toHaveLength(1);
+    expect(game.stage.solids()).toHaveLength(1);
   });
 
   it("遠い方の板を踏んでも同じチャンネルなので橋がSolidになる", () => {
@@ -79,7 +79,7 @@ describe("反転ゲート（橋）の開閉", () => {
 
     run(game, input, 10);
 
-    expect(game.stage.solidBoxes()).toHaveLength(1);
+    expect(game.stage.solids()).toHaveLength(1);
   });
 });
 

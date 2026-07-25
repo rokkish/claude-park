@@ -1,4 +1,4 @@
-import type { AABB } from "../engine/aabb";
+import type { SolidBody } from "../engine/physics";
 import { TileGrid } from "../engine/tilegrid";
 import { createGimmick } from "./gimmicks/registry";
 import type { Gimmick } from "./gimmicks/types";
@@ -15,10 +15,12 @@ export interface Stage {
   readonly gimmicks: Gimmick[];
   /** spawn positions converted from tile coords to world px */
   readonly spawnsPx: readonly { x: number; y: number }[];
-  /** gimmick-derived solids for this frame (gate closed => its box; open => nothing) */
-  solidBoxes(): AABB[];
+  /** このフレームのギミック由来 Solid（閉じたゲート、動く床など）。 */
+  solids(): SolidBody[];
   reset(): void;
 }
+
+const ZERO_DELTA = { dx: 0, dy: 0 } as const;
 
 export function loadStage(data: StageData): Stage {
   const grid = TileGrid.fromRows(data.grid, data.tileSize);
@@ -32,8 +34,8 @@ export function loadStage(data: StageData): Stage {
     y: s.y * data.tileSize,
   }));
 
-  // solidBoxes() の戻り値を毎フレーム使い回し、GC 圧を避ける。
-  const solids: AABB[] = [];
+  // 戻り値の配列を毎フレーム使い回し、GC 圧を避ける。
+  const solids: SolidBody[] = [];
 
   return {
     data,
@@ -41,11 +43,14 @@ export function loadStage(data: StageData): Stage {
     gimmicks,
     spawnsPx,
 
-    solidBoxes(): AABB[] {
+    solids(): SolidBody[] {
       solids.length = 0;
       for (const g of gimmicks) {
         const box = g.solidAABB?.();
-        if (box) solids.push(box);
+        if (!box) continue;
+        // 動いた量の申告が無いギミックは静止扱い。搬送も押し出しも起きない。
+        const d = g.solidDelta?.() ?? ZERO_DELTA;
+        solids.push({ box, dx: d.dx, dy: d.dy });
       }
       return solids;
     },

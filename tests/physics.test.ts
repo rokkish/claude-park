@@ -12,7 +12,7 @@ import {
 const TS = 24;
 
 function world(rows: string[], actors: Actor[] = []): PhysicsWorld {
-  return { grid: TileGrid.fromRows(rows, TS), solidBoxes: [], actors };
+  return { grid: TileGrid.fromRows(rows, TS), solids: [], actors };
 }
 
 /** 幅20×高さ24（＝プレイヤー相当）の Actor。 */

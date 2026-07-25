@@ -1,5 +1,5 @@
 import type { AABB } from "./aabb";
-import { bottom, moved, overlaps, overlapsX, top } from "./aabb";
+import { bottom, left, moved, overlaps, overlapsX, right, top } from "./aabb";
 import type { TileGrid } from "./tilegrid";
 
 /**
@@ -66,21 +66,40 @@ export class Actor {
 }
 
 /**
+ * ギミック由来の Solid。
+ *
+ * ギミックは update() で自分の box を動かし、動いた量を dx/dy で申告する。
+ * 申告が 0 なら搬送も押し出しも起きないので、静止したギミック（閉じた
+ * ゲートなど）は何もしなくてよい。
+ *
+ * 前フレームとの差分を物理側で推測する手もあるが、ステージのリセットに
+ * よる瞬間移動と区別できないので採らない。動かした本人が量を知っている。
+ */
+export interface SolidBody {
+  box: AABB;
+  dx: number;
+  dy: number;
+  /** 押し出し・搬送の最中だけ true。自分自身を障害物にしないため。 */
+  disabled?: boolean;
+}
+
+/**
  * 物理が知る世界。ギミックの存在は知らず、
- * 「今フレームの Solid 矩形の配列」だけを受け取る。
+ * 「今フレームの Solid の配列」だけを受け取る。
  */
 export interface PhysicsWorld {
   readonly grid: TileGrid;
-  /** ギミック由来の Solid（閉じたゲートなど）。毎ステップ差し替えられる。 */
-  solidBoxes: AABB[];
+  /** ギミック由来の Solid。毎ステップ差し替えられる。 */
+  solids: SolidBody[];
   readonly actors: Actor[];
 }
 
 /** タイルとギミック Solid による静的な阻害。 */
 export function blockedByStatic(world: PhysicsWorld, box: AABB): boolean {
   if (world.grid.overlapsSolid(box)) return true;
-  for (const s of world.solidBoxes) {
-    if (overlaps(box, s)) return true;
+  for (const s of world.solids) {
+    if (s.disabled) continue;
+    if (overlaps(box, s.box)) return true;
   }
   return false;
 }
@@ -99,7 +118,12 @@ export function actorAt(world: PhysicsWorld, box: AABB, self: Actor): Actor | nu
  * 位置が整数 px なので厳密一致で判定できる。
  */
 export function isRiding(a: Actor, carrier: Actor): boolean {
-  return bottom(a.box) === top(carrier.box) && overlapsX(a.box, carrier.box);
+  return isRidingBox(a, carrier.box);
+}
+
+/** 矩形の上に立っているか。動く床の乗員判定にも使う。 */
+export function isRidingBox(a: Actor, box: AABB): boolean {
+  return bottom(a.box) === top(box) && overlapsX(a.box, box);
 }
 
 function ridersOf(world: PhysicsWorld, carrier: Actor): Actor[] {
@@ -248,4 +272,87 @@ export function sortBottomUp(world: PhysicsWorld): Actor[] {
 
   for (const a of actors) visit(a);
   return out;
+}
+
+// ---- Solid の移動 (SPEC §3.4) ----
+
+/**
+ * 残差を使わず整数 px だけ Actor を動かす。搬送と押し出しに使う。
+ * 通常の移動 (moveX/moveY) は速度から残差を積むが、搬送は
+ * 「Solid が動いた量そのまま」を渡したいので残差を通さない。
+ */
+export function shiftActor(
+  world: PhysicsWorld,
+  actor: Actor,
+  dx: number,
+  dy: number,
+): boolean {
+  let ok = true;
+  if (dx !== 0) ok = stepX(world, actor, Math.round(dx), 0) && ok;
+  if (dy !== 0) ok = stepY(world, actor, Math.round(dy), 0) && ok;
+  return ok;
+}
+
+/** Solid が動いた向きに、めり込みを解消するのに必要な押し出し量。 */
+function penetration(
+  actorBox: AABB,
+  solidBox: AABB,
+  dx: number,
+  dy: number,
+): { x: number; y: number } {
+  let x = 0;
+  let y = 0;
+  if (dx > 0) x = right(solidBox) - left(actorBox);
+  else if (dx < 0) x = left(solidBox) - right(actorBox);
+  if (dy > 0) y = bottom(solidBox) - top(actorBox);
+  else if (dy < 0) y = top(solidBox) - bottom(actorBox);
+  return { x, y };
+}
+
+/**
+ * 動いた Solid が、重なった Actor を押し出し、乗員を運ぶ。
+ * ギミック更新の直後、Actor が自分で動き出す前に呼ぶこと。
+ */
+export function moveSolids(world: PhysicsWorld): void {
+  for (const solid of world.solids) {
+    if (solid.dx === 0 && solid.dy === 0) continue;
+    moveSolid(world, solid);
+  }
+}
+
+function moveSolid(world: PhysicsWorld, solid: SolidBody): void {
+  const { dx, dy } = solid;
+
+  // box は既にギミックが動かした後なので、乗員は「動く前の位置」で数える。
+  // 動いた後に数えると、置き去りにされた乗員が乗員として拾えない。
+  const before = moved(solid.box, -dx, -dy);
+  const riders = world.actors.filter((a) => isRidingBox(a, before));
+
+  // 押し出しと搬送の間は自分を障害物から外す。外さないと、
+  // めり込んだ Actor が自分の中から出られない。
+  //
+  // finally で必ず戻す。ここで抜けたまま残ると、その Solid は以後ずっと
+  // 素通りになり、閉じたゲートをすり抜けられてしまう。
+  solid.disabled = true;
+  try {
+    // 動いた先で重なった Actor は、進行方向へめり込みぶん押し出す。
+    const pushed = new Set<Actor>();
+    for (const actor of world.actors) {
+      if (!overlaps(actor.box, solid.box)) continue;
+      const push = penetration(actor.box, solid.box, dx, dy);
+      shiftActor(world, actor, push.x, push.y);
+      pushed.add(actor);
+      // 押し切れずまだめり込んでいる場合は圧殺。判定と復帰は呼び出し側
+      // (isCrushed) が持つので、ここでは何もしない。
+    }
+
+    // 乗員を同じ量だけ運ぶ。押し出した相手は既に動いているので二重に動かさない。
+    for (const rider of riders) {
+      if (pushed.has(rider)) continue;
+      // 運ばれた先が壁なら、挟まって固まるより床から滑り落ちる方を選ぶ。
+      shiftActor(world, rider, dx, dy);
+    }
+  } finally {
+    solid.disabled = false;
+  }
 }

@@ -101,17 +101,17 @@ describe("感圧板 → ゲート", () => {
 
     // 閉じている間、ゲートは Solid を1つ提供している
     run(game, input, 5);
-    expect(game.stage.solidBoxes()).toHaveLength(1);
+    expect(game.stage.solids()).toHaveLength(1);
 
     // 棚の上の感圧板（タイル15〜16）に立たせる
     p1!.teleport(15 * TILE, 12 * TILE);
     run(game, input, 10);
-    expect(game.stage.solidBoxes()).toHaveLength(0);
+    expect(game.stage.solids()).toHaveLength(0);
 
     // 板から降ろすと再び塞がる
     p1!.teleport(2 * TILE, 15 * TILE);
     run(game, input, 10);
-    expect(game.stage.solidBoxes()).toHaveLength(1);
+    expect(game.stage.solids()).toHaveLength(1);
   });
 
   it("閉じたゲートは地上の通路を実際に塞ぐ", () => {

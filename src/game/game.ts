@@ -4,6 +4,7 @@ import {
   isCrushed,
   isOnGround,
   isRiding,
+  moveSolids,
   moveX,
   moveY,
   sortBottomUp,
@@ -84,7 +85,7 @@ export class Game {
     this.stages = Array.isArray(stageData) ? stageData : [stageData];
     if (this.stages.length === 0) throw new Error("Game: ステージが1つも登録されていません");
     this._stage = loadStage(this.stages[0]!);
-    this.world = { grid: this._stage.grid, solidBoxes: [], actors: [] };
+    this.world = { grid: this._stage.grid, solids: [], actors: [] };
     this.view = fitCamera(
       this._stage.grid.widthPx,
       this._stage.grid.heightPx,
@@ -126,7 +127,7 @@ export class Game {
     });
     this.world.actors.length = 0;
     this.world.actors.push(...this.players);
-    this.world.solidBoxes = this.stage.solidBoxes();
+    this.world.solids = this.stage.solids();
   }
 
   /**
@@ -137,7 +138,7 @@ export class Game {
   private switchToStage(index: number): void {
     this.stageIndex = index;
     this._stage = loadStage(this.stages[index]!);
-    this.world = { grid: this._stage.grid, solidBoxes: [], actors: [] };
+    this.world = { grid: this._stage.grid, solids: [], actors: [] };
     this.ctx.grid = this._stage.grid;
     this.view = fitCamera(
       this._stage.grid.widthPx,
@@ -230,7 +231,12 @@ export class Game {
     // 4. ギミック更新。Solid の開閉・移動はここで確定する。
     for (const g of this.stage.gimmicks) g.update(dt, this.ctx);
     // 開閉が反映された後の Solid 集合を物理に渡す。
-    this.world.solidBoxes = this.stage.solidBoxes();
+    this.world.solids = this.stage.solids();
+
+    // 4.5. 動いた Solid が乗員を運び、進路上の Actor を押し出す (SPEC §3.4)。
+    //      Actor が自分で動き出す前でなければならない。後にすると、
+    //      足場の上のプレイヤーが1フレームぶん置き去りになって滑る。
+    moveSolids(this.world);
 
     // 5. 移動。土台から順に解決すれば、塔になっていても破綻しない (SPEC §3.4)。
     for (const actor of sortBottomUp(this.world)) {

@@ -85,7 +85,7 @@ describe("感圧板2枚 → ゲート（同時押し必須 + ラッチ）", () =
 
     run(game, input, 10);
 
-    expect(game.stage.solidBoxes()).toHaveLength(1);
+    expect(game.stage.solids()).toHaveLength(1);
   });
 
   it("板B（棚の上）だけ踏んでもゲートは閉じたまま", () => {
@@ -95,7 +95,7 @@ describe("感圧板2枚 → ゲート（同時押し必須 + ラッチ）", () =
 
     run(game, input, 10);
 
-    expect(game.stage.solidBoxes()).toHaveLength(1);
+    expect(game.stage.solids()).toHaveLength(1);
   });
 
   it("2人が同時に両方の板を踏むとゲートが開く", () => {
@@ -106,7 +106,7 @@ describe("感圧板2枚 → ゲート（同時押し必須 + ラッチ）", () =
 
     run(game, input, 10);
 
-    expect(game.stage.solidBoxes()).toHaveLength(0);
+    expect(game.stage.solids()).toHaveLength(0);
   });
 
   it("ラッチ: 一度両方踏めば板から離れても開いたまま。reset() で再び閉じる", () => {
@@ -115,18 +115,18 @@ describe("感圧板2枚 → ゲート（同時押し必須 + ラッチ）", () =
     p1!.teleport(4 * TILE, 15 * TILE);
     p2!.teleport(19 * TILE, 12 * TILE);
     run(game, input, 10);
-    expect(game.stage.solidBoxes()).toHaveLength(0);
+    expect(game.stage.solids()).toHaveLength(0);
 
     // 2人とも板から離れる。latch が無ければここで閉じてしまい、
     // 「同時に踏んだ後、それぞれ別行動で合流する」という想定解法が壊れる。
     p1!.teleport(2 * TILE, 15 * TILE);
     p2!.teleport(30 * TILE, 15 * TILE);
     run(game, input, 10);
-    expect(game.stage.solidBoxes()).toHaveLength(0);
+    expect(game.stage.solids()).toHaveLength(0);
 
     // ステージリセットでラッチ状態も初期化され、再び塞がる
     game.stage.reset();
     run(game, input, 5);
-    expect(game.stage.solidBoxes()).toHaveLength(1);
+    expect(game.stage.solids()).toHaveLength(1);
   });
 });

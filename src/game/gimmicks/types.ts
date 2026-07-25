@@ -35,6 +35,12 @@ export interface Gimmick {
 
   /** 実装すると Solid になる。null を返す間はすり抜けられる（開いたゲート）。 */
   solidAABB?(): AABB | null;
+  /**
+   * この1ステップで Solid が動いた量。実装すると、乗っている Actor が
+   * 同じだけ運ばれ、進路上の Actor が押し出される (SPEC §3.4)。
+   * 動かないギミックは実装しなくてよい。
+   */
+  solidDelta?(): { dx: number; dy: number };
   /** 実装するとプレイヤーとの重なり通知が来る（感圧板・鍵・ゴール）。 */
   onOverlap?(player: PlayerState, ctx: GimmickContext): void;
   /** ステージリセット時に初期状態へ戻す。 */

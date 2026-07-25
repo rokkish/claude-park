@@ -89,5 +89,5 @@ rasterize(canvas, r.ops, ZOOM);
 
 writeFileSync(out, encodePng(canvas));
 console.log(
-  `${out} (${canvas.w}x${canvas.h}) stage=${stageNo} "${data.name}" pose=${pose} phase=${game.phase} solids=${game.stage.solidBoxes().length}`,
+  `${out} (${canvas.w}x${canvas.h}) stage=${stageNo} "${data.name}" pose=${pose} phase=${game.phase} solids=${game.stage.solids().length}`,
 );
