@@ -30,13 +30,15 @@
         --p1: #d97757;
         --p2: #57a8d9;
 
-        /* タップ標的。44px は最低ライン、アクション操作には 70px 前後が要る。
-           上下限を px で挟み、タブレットで巨大化・小型機で潰れるのを防ぐ。 */
-        --btn-size: clamp(56px, 19vmin, 92px);
-        --jump-size: calc(var(--btn-size) * 1.15);
-        /* 操作帯の高さ。canvas の大きさをここから逆算するので、
-           内容依存にせず必ず確定値にしておく。 */
-        --bar-h: calc(var(--jump-size) + 24px);
+        /*
+         * 寸法は src/engine/layout.ts が計算して JS から差し込む。
+         * ここにあるのは JS 実行前の一瞬だけ効く既定値で、式は持たない。
+         * CSS と TypeScript の両方に式を置くと必ずずれるため
+         * （実際にレイアウトのリグレッションを2回出している）。
+         */
+        --btn-size: 64px;
+        --jump-size: 74px;
+        --bar-h: 98px;
       }
 
       html,
@@ -114,13 +116,9 @@
       #game {
         display: block;
         aspect-ratio: 960 / 432;
-        width: min(960px, 100vw, calc(100dvh * 20 / 9));
+        /* 実際の値は layout.ts が --canvas-w に入れる。第2引数は JS 実行前の保険。 */
+        width: var(--canvas-w, min(960px, 100vw, calc(100dvh * 20 / 9)));
         background: var(--bg);
-      }
-
-      /* 操作帯のぶんを引いた高さに収める。 */
-      body.touch-mode #game {
-        width: min(100vw, calc((100dvh - var(--bar-h)) * 20 / 9));
       }
 
       /* ===== タッチ操作 ===== */
@@ -130,7 +128,7 @@
         display: none;
       }
 
-      body.touch-mode #touch-controls {
+      body.touch-mode:not(.controls-hidden) #touch-controls {
         display: flex;
         /* canvas の幅を --bar-h から逆算しているので、実際の高さも
            必ずそれに一致させる。内容で伸び縮みさせると計算がずれる。 */
@@ -214,7 +212,7 @@
 
       /* START / R はプレイ中に触らないものなので、親指の可動域から外して
          画面上部へ逃がす。誤爆すると進行が巻き戻る。 */
-      body.touch-mode #sys-buttons {
+      body.touch-mode:not(.controls-hidden) #sys-buttons {
         position: fixed;
         top: max(6px, env(safe-area-inset-top));
         right: max(6px, env(safe-area-inset-right));
@@ -282,12 +280,9 @@
         fill: currentColor;
       }
 
-      /* 横画面は縦の余裕が無いので、操作帯を必要最小限の高さに抑える。 */
+      /* 中央の空きだけは見た目の調整なので CSS に残す。
+         ボタン径の縦横差は layout.ts が持つ。 */
       @media (orientation: landscape) {
-        :root {
-          --btn-size: clamp(52px, 17vmin, 84px);
-        }
-
         body.touch-mode #touch-controls {
           gap: 4vw;
         }
@@ -311,13 +306,7 @@
         display: none;
       }
 
-      @media (orientation: portrait) and (max-width: 709px) {
-        body.touch-mode #touch-controls,
-        body.touch-mode #sys-buttons {
-          display: none;
-        }
-
-        body.touch-mode #rotate-hint {
+      body.touch-mode.controls-hidden #rotate-hint {
           position: fixed;
           inset: 0;
           z-index: 10;
@@ -330,8 +319,7 @@
           text-align: center;
           background: var(--bg);
           color: var(--text);
-          font: 400 16px/1.6 system-ui, sans-serif;
-        }
+        font: 400 16px/1.6 system-ui, sans-serif;
       }
 
       #rotate-hint .icon {

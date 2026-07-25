@@ -1,4 +1,5 @@
 import { setupFullscreen } from "./engine/fullscreen";
+import { applyLayout, computeLayout, currentViewport } from "./engine/layout";
 import { setupShareButton } from "./engine/share";
 import { formatTime } from "./engine/time";
 import { CompositeInput, KeyboardInput } from "./engine/input";
@@ -50,8 +51,28 @@ const loop = new GameLoop({
   },
 });
 
-// ディスプレイをまたいだ移動や端末の回転に解像度を追従させる
-window.addEventListener("resize", () => renderer.resize());
-window.addEventListener("orientationchange", () => renderer.resize());
+/**
+ * 画面寸法を計算し直して CSS に反映する。式は layout.ts が唯一持ち、
+ * CSS はその結果を使うだけ。ここを通さないと寸法が既定値のままになる。
+ */
+function syncLayout(): void {
+  applyLayout(
+    computeLayout(currentViewport(), touchMode),
+    document.documentElement,
+    document.body,
+  );
+}
+
+syncLayout();
+
+// ディスプレイをまたいだ移動や端末の回転に、解像度とレイアウトを追従させる
+const onViewportChange = (): void => {
+  renderer.resize();
+  syncLayout();
+};
+window.addEventListener("resize", onViewportChange);
+window.addEventListener("orientationchange", onViewportChange);
+// iOS ではアドレスバーの伸縮が resize を伴わないことがある
+window.visualViewport?.addEventListener("resize", onViewportChange);
 
 loop.start();
