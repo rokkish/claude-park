@@ -36,6 +36,11 @@ export class TouchInput implements InputSource {
    * マルチタッチの取りこぼしに強い。
    */
   private readonly onTouch = (e: TouchEvent): void => {
+    // data-native の要素（全画面ボタンなど）はブラウザ既定の挙動に任せる。
+    // preventDefault すると click が合成されず、ユーザー操作として扱われない。
+    const target = e.target as Element | null;
+    if (target?.closest?.("[data-native]")) return;
+
     e.preventDefault();
 
     const next = new Set<string>();

@@ -8,16 +8,32 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <title>Claude Park</title>
+
+    <!-- iPhone の Safari は Fullscreen API に対応していないため、URL バーを
+         消すには「ホーム画面に追加」で PWA として起動してもらう必要がある。
+         manifest と apple- 系メタの両方が要る。 -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="theme-color" content="#131110" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Claude Park" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <link rel="icon" href="./icon-192.png" />
     <style>
       :root {
         --bg: #131110;
         --btn: #2e2a26;
         --btn-edge: #3d3833;
-        --btn-on: #d97757;
         --text: #f0e5d8;
         --dim: #8a8078;
         --p1: #d97757;
         --p2: #57a8d9;
+
+        /* タップ標的。44px は最低ライン、アクション操作には 70px 前後が要る。
+           上下限を px で挟み、タブレットで巨大化・小型機で潰れるのを防ぐ。 */
+        --btn-size: clamp(56px, 19vmin, 92px);
+        --jump-size: calc(var(--btn-size) * 1.15);
       }
 
       html,
@@ -35,28 +51,40 @@
         display: flex;
         flex-direction: column;
         height: 100dvh;
-        align-items: center;
-        justify-content: center;
       }
 
-      /* 論理解像度 960x432 の比率を保ったまま収める */
+      #stage-area {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        place-items: center;
+      }
+
+      /* object-fit:contain は canvas のビットマップにも効くので、
+         入れ物がどんな比率でも 960x432 を保ったまま最大化できる。 */
       #game {
         display: block;
-        width: 960px;
-        max-width: 100vw;
-        max-height: 100dvh;
-        aspect-ratio: 960 / 432;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
         background: var(--bg);
       }
 
       /* ===== タッチ操作 ===== */
 
-      #touch-controls {
+      #touch-controls,
+      #sys-buttons {
         display: none;
       }
 
       body.touch-mode #touch-controls {
         display: flex;
+        align-items: center;
+        justify-content: space-between;
+        /* 中央を大きく空ける。2人が1台を挟むので手がぶつかると操作を邪魔する。 */
+        gap: 8vw;
+        padding: 8px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom))
+          max(14px, env(safe-area-inset-left));
         /* ボタン上でのスクロール・ズーム・長押しメニューを全て殺す */
         touch-action: none;
         user-select: none;
@@ -68,133 +96,112 @@
       .pad {
         display: flex;
         align-items: center;
-        gap: 3vmin;
-      }
-
-      .pad-label {
-        font: 600 3vmin/1 system-ui, sans-serif;
-        letter-spacing: 0.08em;
-      }
-
-      .pad-p1 .pad-label {
-        color: var(--p1);
-      }
-
-      .pad-p2 .pad-label {
-        color: var(--p2);
+        gap: 14px;
       }
 
       [data-btn] {
         appearance: none;
         border: 2px solid var(--btn-edge);
-        border-radius: 12px;
         background: var(--btn);
         color: var(--text);
-        font: 600 5vmin/1 system-ui, sans-serif;
+        font: 600 clamp(18px, 5vmin, 30px) / 1 system-ui, sans-serif;
         display: grid;
         place-items: center;
-        /* pointer-events は要る: elementFromPoint がこの要素を返す必要がある */
         touch-action: none;
+        /* pointer-events は既定のまま。elementFromPoint がこの要素を返す必要がある。 */
       }
 
-      [data-btn].is-pressed {
-        background: var(--btn-on);
-        border-color: var(--text);
-        color: #1b1917;
-      }
-
-      .dpad {
+      /* 左右は隙間なく隣接させ、指を離さず左右へ切り替えられるロッカーにする。
+         離して置くと切り替えのたびに一度入力が途切れ、微調整が効かなくなる。 */
+      .rocker {
         display: flex;
-        gap: 2vmin;
       }
 
-      .dpad [data-btn],
-      .jump {
-        width: 15vmin;
-        height: 15vmin;
+      .rocker [data-btn] {
+        width: var(--btn-size);
+        height: var(--btn-size);
+        border-radius: 14px 0 0 14px;
       }
 
+      .rocker [data-btn]:last-child {
+        border-radius: 0 14px 14px 0;
+        border-left-width: 1px;
+      }
+
+      /* ジャンプはタイミングが要求されるので一回り大きく、指が迷わない円形に。 */
       .jump {
+        width: var(--jump-size);
+        height: var(--jump-size);
         border-radius: 50%;
       }
 
-      #sys-buttons {
-        position: fixed;
-        top: env(safe-area-inset-top, 0px);
-        right: 0;
-        display: none;
-        gap: 8px;
-        padding: 8px;
+      /* 操作とキャラの対応を色で直結させる。ラベルより速く読める。 */
+      .pad-p1 [data-btn] {
+        border-color: var(--p1);
       }
 
+      .pad-p2 [data-btn] {
+        border-color: var(--p2);
+      }
+
+      .pad-p1 [data-btn].is-pressed {
+        background: var(--p1);
+        color: #1b1917;
+      }
+
+      .pad-p2 [data-btn].is-pressed {
+        background: var(--p2);
+        color: #1b1917;
+      }
+
+      /* START / R はプレイ中に触らないものなので、親指の可動域から外して
+         画面上部へ逃がす。誤爆すると進行が巻き戻る。 */
       body.touch-mode #sys-buttons {
+        position: fixed;
+        top: max(6px, env(safe-area-inset-top));
+        right: max(6px, env(safe-area-inset-right));
         display: flex;
+        gap: 8px;
         touch-action: none;
       }
 
       #sys-buttons [data-btn] {
-        min-width: 56px;
+        min-width: 60px;
         height: 40px;
-        font-size: 14px;
         padding: 0 12px;
-        opacity: 0.85;
+        font-size: 14px;
+        border-radius: 10px;
+        opacity: 0.8;
       }
 
-      /* --- 縦画面: ゲームを上、操作を下の余白いっぱいに --- */
-      @media (orientation: portrait) {
-        body.touch-mode #app {
-          justify-content: flex-start;
-        }
-
-        body.touch-mode #game {
-          width: 100vw;
-        }
-
-        body.touch-mode #touch-controls {
-          flex: 1;
-          width: 100vw;
-          flex-direction: row;
-          align-items: center;
-          justify-content: space-evenly;
-          padding-bottom: env(safe-area-inset-bottom, 0px);
-        }
-
-        body.touch-mode .pad {
-          flex-direction: column;
-        }
+      #sys-buttons [data-btn].is-pressed {
+        background: var(--text);
+        color: #1b1917;
       }
 
-      /* --- 横画面: ゲームを全面に、操作は左右下隅へ重ねる --- */
+      /* 横画面は縦の余裕が無いので、操作帯を必要最小限の高さに抑える。 */
       @media (orientation: landscape) {
+        :root {
+          --btn-size: clamp(52px, 17vmin, 84px);
+        }
+
         body.touch-mode #touch-controls {
-          position: fixed;
-          inset: auto 0 0 0;
-          justify-content: space-between;
-          padding: 0 max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-bottom));
-          pointer-events: none;
-        }
-
-        body.touch-mode .pad {
-          pointer-events: auto;
-          opacity: 0.9;
-        }
-
-        body.touch-mode .dpad [data-btn],
-        body.touch-mode .jump {
-          width: 13vmin;
-          height: 13vmin;
+          gap: 4vw;
         }
       }
     </style>
   </head>
   <body>
     <div id="app">
-      <canvas id="game"></canvas>
+      <!-- タイトル画面ではゲーム画面のどこを触ってもスタートできる。
+           小さな START を狙わせない。プレイ中の Enter は無視されるので害はない。 -->
+      <div id="stage-area" data-btn="key-Enter">
+        <canvas id="game"></canvas>
+      </div>
 
       <div id="touch-controls">
         <div class="pad pad-p1">
-          <span class="pad-label">P1</span>
-          <div class="dpad">
+          <div class="rocker">
             <button data-btn="p0-left" aria-label="P1 左">◀</button>
             <button data-btn="p0-right" aria-label="P1 右">▶</button>
           </div>
@@ -202,8 +209,7 @@
         </div>
 
         <div class="pad pad-p2">
-          <span class="pad-label">P2</span>
-          <div class="dpad">
+          <div class="rocker">
             <button data-btn="p1-left" aria-label="P2 左">◀</button>
             <button data-btn="p1-right" aria-label="P2 右">▶</button>
           </div>
@@ -212,7 +218,9 @@
       </div>
 
       <div id="sys-buttons">
-        <button data-btn="key-Enter" aria-label="スタート">START</button>
+        <!-- data-native: TouchInput に preventDefault させない。
+             全画面要求はユーザー操作起点でないとブラウザに拒否される。 -->
+        <button id="btn-fullscreen" data-native aria-label="全画面表示" hidden>⛶</button>
         <button data-btn="key-KeyR" aria-label="やり直し">R</button>
       </div>
     </div>

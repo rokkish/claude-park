@@ -1,3 +1,4 @@
+import { setupFullscreen } from "./engine/fullscreen";
 import { CompositeInput, KeyboardInput } from "./engine/input";
 import { GameLoop } from "./engine/loop";
 import { Renderer2D } from "./engine/renderer2d";
@@ -15,7 +16,10 @@ validateTouchButtons(document.body);
 // にだけ使うので、判定を外しても操作不能にはならない
 // （キーボード付きタブレット、2-in-1、デスクトップのタッチパネル）。
 const touchMode = isCoarsePointer();
-if (touchMode) document.body.classList.add("touch-mode");
+if (touchMode) {
+  document.body.classList.add("touch-mode");
+  setupFullscreen(document.querySelector<HTMLElement>("#stage-area"));
+}
 
 const input = new CompositeInput([
   new KeyboardInput(),

@@ -209,7 +209,8 @@ export class Game {
         align: "center",
       });
       const bottom = this.drawControlBlock(r, 200);
-      r.text(this.touchMode ? "START でスタート" : "Enter でスタート", VIEW_W / 2, bottom + 34, {
+      const startHint = this.touchMode ? "画面をタップでスタート" : "Enter でスタート";
+      r.text(startHint, VIEW_W / 2, bottom + 34, {
         color: PALETTE.textPrimary,
         size: 18,
         align: "center",
