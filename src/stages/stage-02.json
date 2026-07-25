@@ -1,5 +1,6 @@
 {
   "id": "stage-02",
+  "world": 1,
   "name": "Both at Once",
   "tileSize": 24,
   "grid": [

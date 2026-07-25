@@ -4,6 +4,8 @@ import type { GimmickParams } from "./gimmicks/types";
 export interface StageData {
   id: string;
   name: string;
+  /** 所属ワールド。1ワールド1キーアイデアで、HUD の "1-2" 表記に使う。 */
+  world: number;
   tileSize: number;
   /** ASCII 行。文字は engine/tilegrid.ts の TILE_LEGEND に従う。 */
   grid: string[];

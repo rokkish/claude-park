@@ -8,6 +8,7 @@ import { Renderer2D } from "./engine/renderer2d";
 import { TouchInput, isCoarsePointer, validateTouchButtons } from "./engine/touch";
 import { Game } from "./game/game";
 import { STAGES } from "./stages/index";
+import { resolveStartIndex } from "./game/stageSelect";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
 if (!canvas) throw new Error("#game キャンバスが見つかりません");
@@ -32,7 +33,14 @@ const input = new CompositeInput([
 const renderer = new Renderer2D(canvas);
 if (STAGES.length === 0) throw new Error("ステージが1つも登録されていません");
 
-const game = new Game(input, STAGES, { touchMode });
+// ?stage=1-2 や ?stage=stage-02 で任意のステージから始められる。
+// 動作確認用で、既知のステージに一致しない値は黙って先頭に落とす。
+const startIndex = resolveStartIndex(
+  STAGES,
+  new URLSearchParams(location.search).get("stage"),
+);
+
+const game = new Game(input, STAGES, { touchMode, startIndex });
 
 // 全ステージ踏破中だけシェアボタンを出す。状態が変わったときだけ DOM を触る。
 const syncShareButton = setupShareButton(

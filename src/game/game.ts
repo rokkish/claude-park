@@ -19,6 +19,7 @@ import { Player } from "./player";
 import { Inventory, SignalBus } from "./signals";
 import { loadStage, type Stage } from "./stage";
 import type { StageData } from "./stageData";
+import { stageLabel } from "./stageSelect";
 import type { GimmickContext } from "./gimmicks/types";
 import { VIEW_H, VIEW_W } from "./tuning";
 import { formatTime } from "../engine/time";
@@ -77,7 +78,7 @@ export class Game {
   constructor(
     private readonly input: InputSource,
     stageData: StageData | StageData[],
-    opts: { touchMode?: boolean } = {},
+    opts: { touchMode?: boolean; startIndex?: number } = {},
   ) {
     this.touchMode = opts.touchMode ?? false;
     this.stages = Array.isArray(stageData) ? stageData : [stageData];
@@ -100,6 +101,10 @@ export class Game {
       },
     };
     this.resetStage();
+
+    // 開始位置の指定。範囲外は黙って先頭に落とす（URL 由来の値が来るため）。
+    const start = Math.trunc(opts.startIndex ?? 0);
+    if (start > 0 && start < this.stages.length) this.switchToStage(start);
   }
 
   /** ロード済みステージ。HUD と結合テストから参照する。 */
@@ -306,8 +311,7 @@ export class Game {
     // Pico Park 風に「ワールド-ステージ」を前置する。ワールドは今は1つしか
     // 無いので固定値。第2ワールドができたら StageData に world フィールドを
     // 足し、stages/index.ts の並び順ではなくそこから持ってくるようにする。
-    const WORLD = 1;
-    r.text(`${WORLD}-${this.stageIndex + 1}  ${this.stage.data.name}`, VIEW_W / 2, 30, {
+    r.text(`${stageLabel(this.stages, this.stageIndex)}  ${this.stage.data.name}`, VIEW_W / 2, 30, {
       color: PALETTE.textDim,
       size: 14,
       align: "center",

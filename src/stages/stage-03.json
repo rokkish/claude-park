@@ -1,5 +1,6 @@
 {
   "id": "stage-03",
+  "world": 1,
   "name": "Bridge",
   "tileSize": 24,
   "grid": [

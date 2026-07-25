@@ -1,5 +1,6 @@
 {
   "id": "stage-01",
+  "world": 1,
   "name": "Boost & Hold",
   "tileSize": 24,
   "grid": [
