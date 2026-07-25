@@ -110,6 +110,35 @@ describe("ステージ進行", () => {
     expect(game.phase).toBe("playing");
   });
 
+  it("isAllCleared は最終ステージをクリアした瞬間だけ真になる", () => {
+    const { game, input, step } = newGame();
+
+    // 1-1 クリア時点ではまだ先がある
+    forceClear(game, step);
+    expect(game.phase).toBe("cleared");
+    expect(game.isAllCleared).toBe(false);
+
+    input.press("Enter");
+    step();
+    expect(game.isAllCleared).toBe(false); // プレイ中
+
+    // 1-2 クリア
+    forceClear(game, step);
+    expect(game.isAllCleared).toBe(false);
+    input.press("Enter");
+    step();
+
+    // 1-3 クリアで全踏破
+    forceClear(game, step);
+    expect(game.stage.data.id).toBe("stage-03");
+    expect(game.isAllCleared).toBe(true);
+
+    // 先頭に戻ったら降りる
+    input.press("Enter");
+    step();
+    expect(game.isAllCleared).toBe(false);
+  });
+
   it("単一ステージを渡した場合も動く（既存の呼び出しを壊さない）", () => {
     const { game, input, step } = newGame(STAGES[0]!);
     forceClear(game, step);

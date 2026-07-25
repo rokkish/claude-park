@@ -140,6 +140,15 @@ export class Game {
     return this._phase;
   }
 
+  private get isLastStage(): boolean {
+    return this.stageIndex === this.stages.length - 1;
+  }
+
+  /** 全ステージを踏破した直後か。シェアボタンの表示条件。 */
+  get isAllCleared(): boolean {
+    return this._phase === "cleared" && this.isLastStage;
+  }
+
   /** タイトルを飛ばして開始する。Enter 押下と結合テストの入口。 */
   start(): void {
     this._phase = "playing";
@@ -281,8 +290,7 @@ export class Game {
       // 最終ステージだけは「一周した」ことを示す文言にする。Enter (タッチは
       // タップ) は次に進んでも最後は同じキーで先頭ステージに戻るだけなので、
       // 案内文もそれに合わせて変える。
-      const isLastStage = this.stageIndex === this.stages.length - 1;
-      r.text(isLastStage ? "ALL STAGES CLEAR" : "STAGE CLEAR", VIEW_W / 2, VIEW_H / 2 - 6, {
+      r.text(this.isLastStage ? "ALL STAGES CLEAR" : "STAGE CLEAR", VIEW_W / 2, VIEW_H / 2 - 6, {
         color: PALETTE.accent,
         size: 40,
         align: "center",
@@ -291,7 +299,7 @@ export class Game {
       const wrapHint = this.touchMode
         ? "画面をタップで最初のステージへ"
         : "Enter で最初のステージへ";
-      r.text(isLastStage ? wrapHint : nextHint, VIEW_W / 2, VIEW_H / 2 + 30, {
+      r.text(this.isLastStage ? wrapHint : nextHint, VIEW_W / 2, VIEW_H / 2 + 30, {
         color: PALETTE.textPrimary,
         size: 16,
         align: "center",

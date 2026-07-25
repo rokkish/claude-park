@@ -57,11 +57,49 @@
       }
 
       #stage-area {
+        position: relative;
         flex: 1;
         min-height: 0;
         display: grid;
         place-items: center;
         overflow: hidden;
+      }
+
+      /* 全ステージ踏破中だけ出す。クリア演出は canvas に描かれるが、
+         リンクを開く必要があるのでこれだけは DOM に置く。 */
+      #share-button {
+        display: none;
+      }
+
+      body.all-cleared #share-button {
+        position: absolute;
+        left: 50%;
+        bottom: 6%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 22px;
+        border: 2px solid var(--p1);
+        border-radius: 999px;
+        background: var(--btn);
+        color: var(--text);
+        font: 600 15px/1 system-ui, sans-serif;
+        cursor: pointer;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      body.all-cleared #share-button:hover,
+      body.all-cleared #share-button:focus-visible {
+        background: var(--p1);
+        color: #1b1917;
+      }
+
+      #share-button svg {
+        width: 16px;
+        height: 16px;
+        fill: currentColor;
       }
 
       /*
@@ -355,6 +393,16 @@
            小さな START を狙わせない。プレイ中の Enter は無視されるので害はない。 -->
       <div id="stage-area" data-btn="key-Enter">
         <canvas id="game"></canvas>
+        <!-- data-native が要る。これが無いと TouchInput が触れてしまい、
+             #stage-area の key-Enter が発火して押した瞬間に次ステージへ進む。 -->
+        <button id="share-button" data-native type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 .13.87l-6.3 3.68A3 3 0 1 0 8.83 13l6.3 3.68A3 3 0 1 0 16 15.5l-6.3-3.68a3 3 0 0 0 0-1.64L16 6.5A3 3 0 0 0 18 8Z"
+            />
+          </svg>
+          クリアをシェア
+        </button>
       </div>
 
       <div id="touch-controls">
