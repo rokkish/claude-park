@@ -40,6 +40,7 @@ describe("listWorlds", () => {
     expect(listWorlds(STAGES)).toEqual([
       { world: 1, name: "スイッチ", firstIndex: 0, stageCount: 3 },
       { world: 2, name: "動く足場", firstIndex: 3, stageCount: 3 },
+      { world: 3, name: "運べる箱", firstIndex: 6, stageCount: 3 },
     ]);
   });
 
@@ -106,7 +107,7 @@ describe("ワールド選択画面", () => {
     tap(input, { jumpPressed: true });
     step();
 
-    expect(game.stage.data.id).toBe("stage-04"); // ワールド2
+    expect(game.stage.data.id).toBe("stage-07"); // ワールド3（末尾）
   });
 
   it("P2 の入力でも選べる", () => {

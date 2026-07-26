@@ -25,7 +25,7 @@ describe("stageLabel", () => {
     expect(stageLabel([stub("a", 1)], 9)).toBe("?");
   });
 
-  it("実際の登録ステージは 1-1..1-3, 2-1..2-3", () => {
+  it("実際の登録ステージは 1-1..1-3, 2-1..2-3, 3-1..3-3", () => {
     expect(STAGES.map((_, i) => stageLabel(STAGES, i))).toEqual([
       "1-1",
       "1-2",
@@ -33,6 +33,9 @@ describe("stageLabel", () => {
       "2-1",
       "2-2",
       "2-3",
+      "3-1",
+      "3-2",
+      "3-3",
     ]);
   });
 });

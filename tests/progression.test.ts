@@ -23,6 +23,9 @@ const CLEAR_SETUP: Record<string, { goal: { x: number; y: number }; key?: { x: n
   // ゴールは左棚。鍵は右棚にあるので先に取らせる。
   "stage-05": { goal: { x: 13, y: 9 }, key: { x: 33, y: 9 } },
   "stage-06": { goal: { x: 29, y: 9 } },
+  "stage-07": { goal: { x: 34, y: 15 } },
+  "stage-08": { goal: { x: 34, y: 15 }, key: { x: 24, y: 11 } },
+  "stage-09": { goal: { x: 34, y: 15 } },
 };
 
 function newGame(stages: StageData | StageData[] = STAGES): {
@@ -53,7 +56,7 @@ function forceClear(game: Game, step: (n?: number) => void): void {
 }
 
 describe("ステージ進行", () => {
-  it("6ステージ（ワールド1・2 各3本）が登録されている", () => {
+  it("9ステージ（ワールド1・2・3 各3本）が登録されている", () => {
     expect(STAGES.map((s) => s.id)).toEqual([
       "stage-01",
       "stage-02",
@@ -61,6 +64,9 @@ describe("ステージ進行", () => {
       "stage-04",
       "stage-05",
       "stage-06",
+      "stage-07",
+      "stage-08",
+      "stage-09",
     ]);
   });
 
@@ -83,6 +89,9 @@ describe("ステージ進行", () => {
       "stage-04",
       "stage-05",
       "stage-06",
+      "stage-07",
+      "stage-08",
+      "stage-09",
     ]);
     // 最後まで行ったら選択画面。ワールドを跨いで延々と続くより、
     // どのワールドを遊ぶか選び直せる方が構造に合う。
@@ -132,9 +141,18 @@ describe("ステージ進行", () => {
     expect(game.phase).toBe("playing");
   });
 
-  it("isAllCleared は最終ステージ(2-3)をクリアした瞬間だけ真になる", () => {
+  it("isAllCleared は最終ステージ(3-3)をクリアした瞬間だけ真になる", () => {
     const { game, input, step } = newGame();
-    const nonFinalIds = ["stage-01", "stage-02", "stage-03", "stage-04", "stage-05"];
+    const nonFinalIds = [
+      "stage-01",
+      "stage-02",
+      "stage-03",
+      "stage-04",
+      "stage-05",
+      "stage-06",
+      "stage-07",
+      "stage-08",
+    ];
 
     // 途中の5ステージは、クリアしても isAllCleared はまだ立たない
     for (const id of nonFinalIds) {
@@ -148,9 +166,9 @@ describe("ステージ進行", () => {
       expect(game.isAllCleared).toBe(false); // プレイ中
     }
 
-    // 最終ステージ (stage-06 = 2-3) クリアで全踏破
+    // 最終ステージ (stage-09 = 3-3) クリアで全踏破
     forceClear(game, step);
-    expect(game.stage.data.id).toBe("stage-06");
+    expect(game.stage.data.id).toBe("stage-09");
     expect(game.isAllCleared).toBe(true);
 
     // 先頭に戻ったら降りる
