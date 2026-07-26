@@ -432,7 +432,7 @@ export class Game {
     const gap = 24;
     const n = Math.max(1, this.worlds.length);
     const cardW = Math.min(220, (VIEW_W - 140 - gap * (n - 1)) / n);
-    const cardH = 92;
+    const cardH = 74;
     const top = 116;
     const totalW = cardW * n + gap * (n - 1);
     let x = (VIEW_W - totalW) / 2;
@@ -467,17 +467,14 @@ export class Game {
     if (selected) {
       r.strokeRect(x, y, w, h, PALETTE.accent, 2);
     }
-    r.text(`${entry.world}.`, x + w / 2, y + 38, {
+    // 番号とキーアイデア名は1行にまとめる。分けると「1.」だけの行ができて
+    // 収まりが悪い。
+    r.text(`${entry.world}. ${entry.name}`, x + w / 2, y + 36, {
       color: selected ? PALETTE.accent : PALETTE.textDim,
-      size: 26,
+      size: 22,
       align: "center",
     });
-    r.text(entry.name, x + w / 2, y + 62, {
-      color: selected ? PALETTE.textPrimary : PALETTE.textDim,
-      size: 17,
-      align: "center",
-    });
-    r.text(`${entry.stageCount} ステージ`, x + w / 2, y + 80, {
+    r.text(`${entry.stageCount} ステージ`, x + w / 2, y + 58, {
       color: PALETTE.textDim,
       size: 11,
       align: "center",
