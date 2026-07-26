@@ -9,6 +9,10 @@ export const PALETTE = {
   tileTop: "#3D3833",
 
   gateClosed: "#7A5C4A",
+
+  /** 押せる箱。ゲート(#7A5C4A)と混同しないよう一段明るくする。 */
+  crate: "#8A6B4F",
+  crateEdge: "#A88463",
   gateOpen: "#7A5C4A",
 
   accent: "#E3B341",

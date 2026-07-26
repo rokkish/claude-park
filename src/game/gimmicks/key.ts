@@ -1,7 +1,7 @@
 import { PALETTE } from "../../art/palette";
 import type { AABB } from "../../engine/aabb";
 import type { Renderer } from "../../engine/renderer";
-import type { PlayerState } from "../entities";
+import type { OverlapSource } from "../entities";
 import type { Gimmick, GimmickContext, GimmickDef, GimmickParams, SpawnContext } from "./types";
 
 /** 鍵 (SPEC §7.3)。取ると inventory に id が追加される収集物。 */
@@ -41,8 +41,9 @@ class Key implements Gimmick {
     this.aabb.y = this.baseY + Math.sin(this.t * BOB_SPEED) * BOB_AMPLITUDE;
   }
 
-  onOverlap(_player: PlayerState, ctx: GimmickContext): void {
-    if (this.collected) return;
+  onOverlap(source: OverlapSource, ctx: GimmickContext): void {
+    // 箱が転がってきて鍵を回収してしまわないよう、人限定にする。
+    if (this.collected || !source.isPlayer) return;
     ctx.inventory.add(this.id);
     this.collected = true;
   }

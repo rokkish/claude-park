@@ -7,10 +7,21 @@ import type { AABB } from "../engine/aabb";
  * ギミックが物理内部を直接いじると衝突解決が壊れるため、
  * 触ってよいものをここに限定する。
  */
-export interface PlayerState {
+/**
+ * 重なり通知を受け取れるもの。プレイヤーだけでなく箱なども含む。
+ * 感圧板は「重さ」しか見ないので誰でもよいが、鍵のように人でないと
+ * 拾えないものがあるため、区別できるよう isPlayer を持たせる。
+ */
+export interface OverlapSource {
+  readonly box: AABB;
+  readonly isPlayer: boolean;
+}
+
+export interface PlayerState extends OverlapSource {
   readonly index: number;
   /** 当たり判定。位置の書き換えは respawn() 経由でのみ行う。 */
   readonly box: AABB;
+  readonly isPlayer: true;
 
   facing: 1 | -1;
   vx: number;

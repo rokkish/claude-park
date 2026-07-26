@@ -1,4 +1,4 @@
-import type { SolidBody } from "../engine/physics";
+import type { Actor, SolidBody } from "../engine/physics";
 import { TileGrid } from "../engine/tilegrid";
 import { createGimmick } from "./gimmicks/registry";
 import type { Gimmick } from "./gimmicks/types";
@@ -17,6 +17,8 @@ export interface Stage {
   readonly spawnsPx: readonly { x: number; y: number }[];
   /** このフレームのギミック由来 Solid（閉じたゲート、動く床など）。 */
   solids(): SolidBody[];
+  /** ギミックが持つ Actor（箱など）。ステージ内で不変なので毎フレーム作らない。 */
+  readonly gimmickActors: readonly Actor[];
   reset(): void;
 }
 
@@ -37,11 +39,20 @@ export function loadStage(data: StageData): Stage {
   // 戻り値の配列を毎フレーム使い回し、GC 圧を避ける。
   const solids: SolidBody[] = [];
 
+  // Actor はステージの寿命中ずっと同じインスタンス。毎フレーム集め直すと
+  // 物理が同一性を追えなくなる（乗員判定は参照の一致で見ている）。
+  const gimmickActors: Actor[] = [];
+  for (const g of gimmicks) {
+    const a = g.actor?.();
+    if (a) gimmickActors.push(a);
+  }
+
   return {
     data,
     grid,
     gimmicks,
     spawnsPx,
+    gimmickActors,
 
     solids(): SolidBody[] {
       solids.length = 0;

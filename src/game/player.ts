@@ -28,6 +28,8 @@ import {
  */
 export class Player extends Actor implements PlayerState {
   readonly index: number;
+  /** 鍵のように「人でないと拾えない」ものが見る。 */
+  readonly isPlayer = true as const;
   facing: 1 | -1 = 1;
   squash = 1;
   carrying = false;

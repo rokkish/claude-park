@@ -1,7 +1,8 @@
 import type { AABB } from "../../engine/aabb";
+import type { Actor } from "../../engine/physics";
 import type { Renderer } from "../../engine/renderer";
 import type { TileGrid } from "../../engine/tilegrid";
-import type { PlayerState } from "../entities";
+import type { OverlapSource, PlayerState } from "../entities";
 import type { Inventory, SignalBus } from "../signals";
 
 /** ギミックが update / onOverlap 中に触れてよいもの。 */
@@ -41,8 +42,17 @@ export interface Gimmick {
    * 動かないギミックは実装しなくてよい。
    */
   solidDelta?(): { dx: number; dy: number };
-  /** 実装するとプレイヤーとの重なり通知が来る（感圧板・鍵・ゴール）。 */
-  onOverlap?(player: PlayerState, ctx: GimmickContext): void;
+  /**
+   * 実装すると重なり通知が来る（感圧板・鍵）。プレイヤーだけでなく
+   * 箱なども渡ってくるので、人限定にしたいものは isPlayer を見ること。
+   */
+  onOverlap?(source: OverlapSource, ctx: GimmickContext): void;
+
+  /**
+   * 実装すると、このギミックが持つ Actor が物理世界に参加する（箱など）。
+   * 押し合いと「上に乗る」は Actor 同士の既存経路がそのまま効く。
+   */
+  actor?(): Actor | null;
   /** ステージリセット時に初期状態へ戻す。 */
   reset?(): void;
 }

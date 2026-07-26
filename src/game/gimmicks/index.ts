@@ -1,3 +1,4 @@
+import { crateDef } from "./crate";
 import { gateDef } from "./gate";
 import { goalDef } from "./goal";
 import { keyDef } from "./key";
@@ -12,5 +13,5 @@ import type { GimmickDef, GimmickParams } from "./types";
 // モジュールキャッシュにより一度しか実行されないので安全。
 //
 // ギミックを追加する場合は、この配列に1行足すだけでよい (SPEC §8.1)。
-const allDefs: GimmickDef<GimmickParams>[] = [plateDef, gateDef, keyDef, goalDef, platformDef];
+const allDefs: GimmickDef<GimmickParams>[] = [plateDef, gateDef, keyDef, goalDef, platformDef, crateDef];
 allDefs.forEach((def) => registerGimmick(def));

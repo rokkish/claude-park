@@ -1,7 +1,7 @@
 import { PALETTE } from "../../art/palette";
 import type { AABB } from "../../engine/aabb";
 import type { Renderer } from "../../engine/renderer";
-import type { PlayerState } from "../entities";
+import type { OverlapSource } from "../entities";
 import type { Gimmick, GimmickContext, GimmickDef, GimmickParams, SpawnContext } from "./types";
 
 /** 感圧板 (SPEC §7.3)。誰かが乗っている間、毎フレーム emit チャンネルを ON にする。 */
@@ -44,7 +44,8 @@ class Plate implements Gimmick {
     this.pressed = false;
   }
 
-  onOverlap(_player: PlayerState, ctx: GimmickContext): void {
+  // 重さがあれば人でも箱でもよい。ここが World 3 の「道具が人の代わりをする」の要。
+  onOverlap(_source: OverlapSource, ctx: GimmickContext): void {
     this.pressed = true;
     ctx.signals.set(this.emit, true);
   }

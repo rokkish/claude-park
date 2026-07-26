@@ -23,7 +23,8 @@ import type { StageData } from "./stageData";
 import { stageLabel } from "./stageSelect";
 import { listWorlds, type WorldEntry } from "../stages/worlds";
 import type { GimmickContext } from "./gimmicks/types";
-import { VIEW_H, VIEW_W } from "./tuning";
+import type { OverlapSource } from "./entities";
+import { GRAVITY, MAX_FALL, VIEW_H, VIEW_W } from "./tuning";
 import { formatTime } from "../engine/time";
 import { VERSION_LABEL } from "../version";
 // 副作用 import: 全ギミックの registry 登録。loadStage より前に必ず評価される必要がある。
@@ -76,6 +77,12 @@ export class Game {
 
   /** 画面上のタッチボタンで遊んでいるか。操作説明の文面だけを切り替える。 */
   private readonly touchMode: boolean;
+
+  /**
+   * 重なり通知を送る対象。プレイヤーに加えて箱なども含む。
+   * box の参照は Actor の寿命中ずっと同じなので、ステージ切り替え時だけ作る。
+   */
+  private overlapSources: OverlapSource[] = [];
 
   /** 選択画面に出すワールド一覧。ステージ登録から組み立てる。 */
   private readonly worlds: WorldEntry[];
@@ -142,8 +149,14 @@ export class Game {
       this.players.push(new Player(i, s.x, s.y));
     });
     this.world.actors.length = 0;
-    this.world.actors.push(...this.players);
+    this.world.actors.push(...this.players, ...this.stage.gimmickActors);
     this.world.solids = this.stage.solids();
+
+    // 箱は「人ではない重なり」として通知する。鍵は拾えないが板は踏める。
+    this.overlapSources = [
+      ...this.players,
+      ...this.stage.gimmickActors.map((a) => ({ box: a.box, isPlayer: false })),
+    ];
   }
 
   /**
@@ -283,6 +296,13 @@ export class Game {
     // （やり直しのたびに出ると邪魔になる）。
     if (anyInput) this.controlsAlpha = Math.max(0, this.controlsAlpha - dt * 3);
 
+    // プレイヤー以外の Actor（箱など）にも重力を掛ける。押し合いは stepX が
+    // 位置を直接動かすので、水平の速度は持たせない（押すのをやめた瞬間に
+    // 止まる方がパズルとして扱いやすい）。
+    for (const a of this.stage.gimmickActors) {
+      a.vy = Math.min(a.vy + GRAVITY * dt, MAX_FALL);
+    }
+
     // 4. ギミック更新。Solid の開閉・移動はここで確定する。
     for (const g of this.stage.gimmicks) g.update(dt, this.ctx);
     // 開閉が反映された後の Solid 集合を物理に渡す。
@@ -316,8 +336,8 @@ export class Game {
     // 7. 重なり通知。感圧板がシグナルを立てるのはここ。
     for (const g of this.stage.gimmicks) {
       if (!g.onOverlap) continue;
-      for (const p of this.players) {
-        if (overlaps(p.box, g.aabb)) g.onOverlap(p, this.ctx);
+      for (const src of this.overlapSources) {
+        if (overlaps(src.box, g.aabb)) g.onOverlap(src, this.ctx);
       }
     }
     // 受信側（ゲート）は次ステップの手順4でこのシグナルを読む。
