@@ -15,10 +15,15 @@ function idle(): PlayerInput {
 }
 
 /** ステージごとの「クリアさせるための置き方」（タイル座標）。 */
-const CLEAR_SETUP: Record<string, { goal: { x: number; y: number }; key?: { x: number; y: number } }> = {
+const CLEAR_SETUP: Record<
+  string,
+  { goal: { x: number; y: number }; key?: { x: number; y: number }; key2?: { x: number; y: number } }
+> = {
   "stage-01": { goal: { x: 35, y: 15 }, key: { x: 25, y: 15 } },
   "stage-02": { goal: { x: 34, y: 15 } },
   "stage-03": { goal: { x: 34, y: 12 } },
+  // 1-4: 鍵は2つ。ゴールは (36,12)、鍵は (22,12) と (29,12)。
+  "stage-10": { goal: { x: 36, y: 12 }, key: { x: 22, y: 12 }, key2: { x: 29, y: 12 } },
   "stage-04": { goal: { x: 34, y: 12 } },
   // ゴールは左棚。鍵は右棚にあるので先に取らせる。
   "stage-05": { goal: { x: 13, y: 9 }, key: { x: 33, y: 9 } },
@@ -50,17 +55,22 @@ function forceClear(game: Game, step: (n?: number) => void): void {
     game.players[0]!.teleport(setup.key.x * TILE, setup.key.y * TILE);
     step(5);
   }
+  if (setup.key2) {
+    game.players[0]!.teleport(setup.key2.x * TILE, setup.key2.y * TILE);
+    step(5);
+  }
   game.players[0]!.teleport(setup.goal.x * TILE, setup.goal.y * TILE);
   game.players[1]!.teleport(setup.goal.x * TILE + 30, setup.goal.y * TILE);
   step(10);
 }
 
 describe("ステージ進行", () => {
-  it("9ステージ（ワールド1・2・3 各3本）が登録されている", () => {
+  it("10ステージ（ワールド1が4本、ワールド2・3が各3本）が登録されている", () => {
     expect(STAGES.map((s) => s.id)).toEqual([
       "stage-01",
       "stage-02",
       "stage-03",
+      "stage-10",
       "stage-04",
       "stage-05",
       "stage-06",
@@ -86,6 +96,7 @@ describe("ステージ進行", () => {
       "stage-01",
       "stage-02",
       "stage-03",
+      "stage-10",
       "stage-04",
       "stage-05",
       "stage-06",
@@ -147,6 +158,7 @@ describe("ステージ進行", () => {
       "stage-01",
       "stage-02",
       "stage-03",
+      "stage-10",
       "stage-04",
       "stage-05",
       "stage-06",
@@ -154,7 +166,7 @@ describe("ステージ進行", () => {
       "stage-08",
     ];
 
-    // 途中の5ステージは、クリアしても isAllCleared はまだ立たない
+    // 途中の8ステージは、クリアしても isAllCleared はまだ立たない
     for (const id of nonFinalIds) {
       expect(game.stage.data.id).toBe(id);
       forceClear(game, step);
