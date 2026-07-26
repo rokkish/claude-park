@@ -6,157 +6,160 @@ import type { StageData } from "../src/game/stageData";
 import stage08 from "../src/stages/stage-08.json";
 
 /**
- * ステージ3-2「Stepstool」の検証 (docs/SPEC.md §7.x, World 3)。
+ * 3-2「Double Lock」。
  *
- * 棚 (x=22〜27, y=12) は地面から4タイル=96px。頭に乗っただけ（boosted-only）
- * では feet=297.5 までしか届かず (288 に届かない)、箱の上に立ってから
- * 頭に乗る（box+boost）と feet=273.5 まで届く。この14.5pxの差が
- * このステージの核。
+ * 初版は「箱を踏み台にして高さを稼ぐ」設計だったが、二段ジャンプ
+ * （相方の頭に乗り、下が跳んだ頂点で上が跳ぶ）で地面から 149px 届いてしまい、
+ * 箱＋ブーストの 110.5px を常に上回るため、箱が不要になっていた。
+ * 高さで箱を必須にすることはこのエンジンでは不可能なので、箱にしかできない
+ * 「人がいなくても居座り続ける」性質を使う設計に置き換えてある。
+ *
+ * ゲートは swA と swB の両方を要求する。箱が swA を、人が swB を押さえる。
+ * 人が2枚とも押さえると誰も通れないので、箱が無いと成立しない。
  */
 
-const GROUND_TOP = 16 * TILE; // 384
-const LEDGE_TOP = 12 * TILE; // 288
+const GROUND = 16 * TILE;
+const GATE_X = 21 * TILE;
 
 function idle(): PlayerInput {
   return { left: false, right: false, jumpHeld: false, jumpPressed: false };
 }
 
-function newGame(): { game: Game; input: ScriptedInput } {
+function newGame(): {
+  game: Game;
+  input: ScriptedInput;
+  step: (n?: number) => void;
+} {
   const input = new ScriptedInput([idle(), idle()]);
   const game = new Game(input, stage08 as StageData);
   game.start();
-  return { game, input };
+  return {
+    game,
+    input,
+    step: (n = 1) => {
+      for (let i = 0; i < n; i++) game.step(DT);
+    },
+  };
 }
 
-function run(game: Game, steps: number, each?: (i: number) => void): void {
-  for (let i = 0; i < steps; i++) {
-    each?.(i);
-    game.step(DT);
+function crateBox(game: Game): { x: number; y: number } {
+  return game.stage.gimmicks.find((it) => it.type === "crate")!.aabb;
+}
+
+/**
+ * 箱を左の壁際まで押す。板Aは壁際にあるので、押し切れば必ず載る
+ * （行き過ぎて壁に詰まり、押し戻せなくなる事故が起きない配置）。
+ */
+function pushLeft(input: ScriptedInput, step: (n?: number) => void, frames = 240): void {
+  for (let i = 0; i < frames; i++) {
+    input.inputs[0] = { ...idle(), left: true };
+    step(1);
   }
+  input.inputs[0] = idle();
 }
 
-function crateBox(game: Game): { x: number; y: number; w: number; h: number } {
-  const g = game.stage.gimmicks.find((it) => it.type === "crate")!;
-  return { ...g.aabb };
-}
+const gateClosed = (game: Game): boolean => game.stage.solids().length > 0;
 
-describe("ステージ3-2のジオメトリ", () => {
-  it("スポーンは2人ぶん、地面の上に立っている", () => {
+describe("3-2 Double Lock", () => {
+  it("2人とも地面の上にスポーンする", () => {
     const { game } = newGame();
-    expect(game.players).toHaveLength(2);
     for (const p of game.players) {
-      expect(p.box.y + p.box.h).toBe(GROUND_TOP);
+      expect(p.box.y + p.box.h).toBe(GROUND);
     }
   });
 
-  it("棚は地面から96px（4タイル）", () => {
-    expect(GROUND_TOP - LEDGE_TOP).toBe(96);
+  it("何も押さえていなければゲートは閉じている", () => {
+    const { game, step } = newGame();
+    step(10);
+    expect(gateClosed(game)).toBe(true);
   });
 
-  it("箱は地面に置かれている", () => {
-    const { game } = newGame();
-    const box = crateBox(game);
-    expect(box.y + box.h).toBe(GROUND_TOP);
+  it("片方のチャンネルだけではゲートは開かない", () => {
+    const { game, step } = newGame();
+
+    // swB だけ（人が板Bに乗る。箱は初期位置でどの板にも載っていない）
+    game.players[0]!.teleport(12 * TILE, 15 * TILE);
+    game.players[1]!.teleport(30 * TILE, 15 * TILE);
+    step(10);
+    expect(gateClosed(game)).toBe(true);
+
+    // swA だけ（箱を板Aへ、人はどの板にも乗らない）
+    game.players[0]!.teleport(18 * TILE, 15 * TILE);
+    crateBox(game).x = 1 * TILE;
+    step(10);
+    expect(gateClosed(game)).toBe(true);
   });
-});
 
-describe("頭に乗っただけ（箱なし）では棚に届かない", () => {
-  it("相方の頭からジャンプしても feet は 288 に届かない（297.5 止まり）", () => {
-    const { game, input } = newGame();
-    const [p1, p2] = game.players;
-    // p1 が土台、p2 が頭に乗ってからジャンプする。棚の真下あたりに位置取る。
-    p1!.teleport(20 * TILE, 15 * TILE);
-    p2!.teleport(20 * TILE, 15 * TILE - 24);
-    run(game, 10);
-    expect(p2!.box.y + p2!.box.h).toBe(p1!.box.y); // 頭の上に乗っている
+  it("箱が板Aに、人が板Bに乗るとゲートが開く", () => {
+    const { game, step } = newGame();
+    crateBox(game).x = 1 * TILE;
+    game.players[0]!.teleport(12 * TILE, 15 * TILE);
+    game.players[1]!.teleport(18 * TILE, 15 * TILE);
+    step(10);
 
-    let lowestFeet = Infinity;
-    run(game, 90, (i) => {
-      input.inputs[1] = { left: false, right: false, jumpHeld: true, jumpPressed: i === 0 };
-      input.inputs[0] = idle();
-      lowestFeet = Math.min(lowestFeet, p2!.box.y + p2!.box.h);
-    });
-
-    // 単独+頭乗り = 24 + 62.5 = 86.5。384 - 86.5 = 297.5 で頭打ち
-    // （離散シミュレーションなので数px の誤差は許容する）。
-    expect(lowestFeet).toBeGreaterThan(LEDGE_TOP);
-    expect(lowestFeet).toBeLessThan(310);
-    expect(lowestFeet).toBeGreaterThan(290);
+    expect(gateClosed(game)).toBe(false);
   });
-});
 
-describe("箱の上に立ってからのブースト（box+boost）なら棚に届く", () => {
-  it("箱の上 → 頭 → ジャンプで feet が 288 以下になる", () => {
-    const { game, input } = newGame();
-    const [p1, p2] = game.players;
-    const box = crateBox(game);
-
-    // p1 が箱の上に立ち、p2 が p1 の頭に乗ってからジャンプする。
-    p1!.teleport(box.x, box.y - 24);
-    run(game, 10);
-    expect(p1!.box.y + p1!.box.h).toBe(box.y); // 箱の上に乗っている
-
-    p2!.teleport(box.x, p1!.box.y - 24);
-    run(game, 10);
-    expect(p2!.box.y + p2!.box.h).toBe(p1!.box.y); // p1 の頭の上
-
-    let lowestFeet = Infinity;
-    run(game, 90, (i) => {
-      input.inputs[1] = { left: false, right: false, jumpHeld: true, jumpPressed: i === 0 };
-      input.inputs[0] = idle();
-      lowestFeet = Math.min(lowestFeet, p2!.box.y + p2!.box.h);
-    });
-
-    expect(lowestFeet).toBeLessThanOrEqual(LEDGE_TOP);
-  });
-});
-
-describe("想定手順で2人ともゴールに到達できる", () => {
-  it("箱を棚の真下まで押し、踏み台にして鍵を取り、両者でゴールする", () => {
-    const { game, input } = newGame();
-    const [p1, p2] = game.players;
-    const step = (n: number, each?: (i: number) => void): void => run(game, n, each);
-
-    // 1. 箱をスポーンから棚の左（x=21あたり）まで押す。
-    p1!.teleport(9 * TILE, 15 * TILE);
+  it("箱を左へ押して板Aに載せられる", () => {
+    const { game, input, step } = newGame();
+    game.players[0]!.teleport(11 * TILE, 15 * TILE); // 箱の右側に立つ
+    game.players[1]!.teleport(30 * TILE, 15 * TILE);
     step(5);
-    for (let i = 0; i < 400 && crateBox(game).x < 20 * TILE; i++) {
-      input.inputs[0] = { ...idle(), right: true };
-      game.step(DT);
+
+    pushLeft(input, step);
+
+    // 板A は x=24..72。箱は壁(x=24)まで押されて板の上に載る
+    expect(crateBox(game).x).toBe(TILE);
+  });
+
+  it("人が2枚とも押さえても、押さえた本人はゲートを通れない（箱が必須）", () => {
+    const { game, input, step } = newGame();
+    game.players[0]!.teleport(1 * TILE, 15 * TILE); // 板A
+    game.players[1]!.teleport(12 * TILE, 15 * TILE); // 板B
+    step(10);
+    expect(gateClosed(game)).toBe(false);
+
+    // 板Bを離れた瞬間に swB が落ちてゲートが閉じるので、通り抜けられない
+    for (let i = 0; i < 240; i++) {
+      input.inputs[1] = { ...idle(), right: true };
+      step(1);
     }
-    input.inputs[0] = idle();
+    expect(game.players[1]!.box.x + game.players[1]!.box.w).toBeLessThanOrEqual(GATE_X);
+  });
+
+  /**
+   * 通しでクリアできることの証明。2-2 で詰み盤面を出しているので、
+   * 各ステージにこれを必ず置く。
+   */
+  it("想定手順で2人ともゴールに到達できる", () => {
+    const { game, input, step } = newGame();
+    const [p1, p2] = game.players;
+
+    // 1. P1 が箱を左へ押して板Aに載せる
+    p1!.teleport(11 * TILE, 15 * TILE);
+    p2!.teleport(16 * TILE, 15 * TILE);
     step(5);
+    pushLeft(input, step);
+    expect(crateBox(game).x).toBe(TILE);
 
-    const parked = crateBox(game);
-    expect(parked.x).toBeLessThan(22 * TILE); // 棚 (22〜27) の左に隣接して止まっている
-    expect(parked.y + parked.h).toBe(GROUND_TOP); // 地面の上（箱は登れていない）
-
-    // 2. P1 が箱の上に立つ。
-    p1!.teleport(parked.x, parked.y - 24);
+    // 2. P1 が板Bに乗る -> swA(箱) と swB(人) が揃ってゲートが開く
+    p1!.teleport(12 * TILE, 15 * TILE);
     step(10);
-    expect(p1!.box.y + p1!.box.h).toBe(parked.y);
+    expect(gateClosed(game)).toBe(false);
 
-    // 3. P2 が P1 の頭に乗ってからジャンプし、棚へ届く。
-    p2!.teleport(parked.x, p1!.box.y - 24);
+    // 3. P2 がゲートを抜け、向こう側の板Cに乗って swB を引き継ぐ
+    p2!.teleport(27 * TILE, 15 * TILE);
     step(10);
-    expect(p2!.box.y + p2!.box.h).toBe(p1!.box.y);
+    expect(gateClosed(game)).toBe(false);
 
-    step(1, () => {
-      input.inputs[1] = { left: false, right: true, jumpHeld: true, jumpPressed: true };
-    });
-    step(50, () => {
-      input.inputs[1] = { left: false, right: true, jumpHeld: true, jumpPressed: false };
-    });
-    input.inputs[1] = idle();
-    step(20);
-
-    expect(p2!.box.y + p2!.box.h).toBeLessThanOrEqual(LEDGE_TOP); // 棚に到達
-
-    // 4. 鍵を回収し、地面へ戻ってゴールへ。
-    p2!.teleport(24 * TILE, 11 * TILE);
+    // 4. P1 が板Bを離れてもゲートは開いたまま。P1 も通り抜けられる
+    p1!.teleport(25 * TILE, 15 * TILE);
     step(10);
-    p2!.teleport(35 * TILE, 15 * TILE);
-    p1!.teleport(34 * TILE, 15 * TILE);
+    expect(gateClosed(game)).toBe(false);
+
+    // 5. 2人ともゴールへ
+    p1!.teleport(33 * TILE, 15 * TILE);
+    p2!.teleport(33 * TILE + 30, 15 * TILE);
     step(10);
 
     expect(game.phase).toBe("cleared");

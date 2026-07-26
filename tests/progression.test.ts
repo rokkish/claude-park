@@ -24,7 +24,7 @@ const CLEAR_SETUP: Record<string, { goal: { x: number; y: number }; key?: { x: n
   "stage-05": { goal: { x: 13, y: 9 }, key: { x: 33, y: 9 } },
   "stage-06": { goal: { x: 29, y: 9 } },
   "stage-07": { goal: { x: 34, y: 15 } },
-  "stage-08": { goal: { x: 34, y: 15 }, key: { x: 24, y: 11 } },
+  "stage-08": { goal: { x: 33, y: 15 } },
   "stage-09": { goal: { x: 34, y: 15 } },
 };
 
