@@ -54,7 +54,9 @@ claude-park/
     │       ├── plate.ts        感圧板（シグナル発信）
     │       ├── gate.ts         ゲート（シグナル受信）
     │       ├── key.ts          鍵（収集物）
-    │       └── goal.ts         ゴールゾーン（クリア判定）
+    │       ├── goal.ts         ゴールゾーン（クリア判定）
+    │       ├── platform.ts     動く足場（World 2）
+    │       └── crate.ts        押せる箱（World 3）
     ├── art/
     │   ├── palette.ts          色定義
     │   └── clawd.ts            Clawd の手描き風描画
@@ -266,6 +268,14 @@ export interface GimmickDef<P = any> {
   create(params: P & { x: number; y: number }, stage: Stage): Gimmick;
 }
 ```
+
+ギミックが Actor を提供することもできる（箱）。`actor?(): Actor | null` を実装すると
+物理世界に参加し、押し合いと「上に乗る」は §3.3 / §3.4 の既存経路がそのまま効く。
+プレイヤー専用に書いたコードが、そのまま人以外にも使える形になっている。
+
+重なり通知 `onOverlap` はプレイヤー限定ではなく `OverlapSource`（`box` と `isPlayer`）を
+受け取る。感圧板は重さしか見ないので誰でもよく、鍵は `isPlayer` を見て人限定にする。
+この線引きが World 3 の「道具が人の代わりをする」を成立させている。
 
 ### 5.2 登録簿
 
