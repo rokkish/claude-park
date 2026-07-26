@@ -77,6 +77,20 @@ switch (pose) {
     p2!.teleport(16 * TILE, 12 * TILE); // 渡ろうとしている側
     break;
 
+  // --- 2-4 Tower: 中段で A から B へ乗り継ぐ瞬間 ---
+  case "transfer":
+    p1!.teleport(2 * TILE + 8, 15 * TILE); // 地上の板を踏み続ける
+    p2!.teleport(9 * TILE, 14 * TILE); // 足場Aの上
+    step(150); // A が中段へ、B が中段へ降りてくるまで
+    break;
+
+  // --- 2-4 Tower: 上の板を踏み、島に取り残されている状態 ---
+  case "island":
+    p1!.teleport(9 * TILE, 14 * TILE); // 足場Aの上（下から呼ばれて上がる側）
+    p2!.teleport(8 * TILE + 8, 3 * TILE); // 島の板
+    step(150);
+    break;
+
   default:
     break;
 }

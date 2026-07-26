@@ -39,8 +39,8 @@ describe("listWorlds", () => {
   it("登録ステージからワールド一覧を組み立てる", () => {
     expect(listWorlds(STAGES)).toEqual([
       { world: 1, name: "スイッチ", firstIndex: 0, stageCount: 4 },
-      { world: 2, name: "動く足場", firstIndex: 4, stageCount: 3 },
-      { world: 3, name: "運べる箱", firstIndex: 7, stageCount: 3 },
+      { world: 2, name: "動く足場", firstIndex: 4, stageCount: 4 },
+      { world: 3, name: "運べる箱", firstIndex: 8, stageCount: 3 },
     ]);
   });
 

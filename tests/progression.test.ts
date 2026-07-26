@@ -28,6 +28,8 @@ const CLEAR_SETUP: Record<
   // ゴールは左棚。鍵は右棚にあるので先に取らせる。
   "stage-05": { goal: { x: 13, y: 9 }, key: { x: 33, y: 9 } },
   "stage-06": { goal: { x: 29, y: 9 } },
+  // 2-4: 鍵は2つ。ゴールは棚の上 (30,3)、鍵は中段 (12,6) と島 (10,3)。
+  "stage-11": { goal: { x: 30, y: 3 }, key: { x: 12, y: 6 }, key2: { x: 10, y: 3 } },
   "stage-07": { goal: { x: 34, y: 15 } },
   "stage-08": { goal: { x: 33, y: 15 } },
   "stage-09": { goal: { x: 34, y: 15 } },
@@ -65,7 +67,7 @@ function forceClear(game: Game, step: (n?: number) => void): void {
 }
 
 describe("ステージ進行", () => {
-  it("10ステージ（ワールド1が4本、ワールド2・3が各3本）が登録されている", () => {
+  it("11ステージ（ワールド1・2が各4本、ワールド3が3本）が登録されている", () => {
     expect(STAGES.map((s) => s.id)).toEqual([
       "stage-01",
       "stage-02",
@@ -74,6 +76,7 @@ describe("ステージ進行", () => {
       "stage-04",
       "stage-05",
       "stage-06",
+      "stage-11",
       "stage-07",
       "stage-08",
       "stage-09",
@@ -100,6 +103,7 @@ describe("ステージ進行", () => {
       "stage-04",
       "stage-05",
       "stage-06",
+      "stage-11",
       "stage-07",
       "stage-08",
       "stage-09",
@@ -162,6 +166,7 @@ describe("ステージ進行", () => {
       "stage-04",
       "stage-05",
       "stage-06",
+      "stage-11",
       "stage-07",
       "stage-08",
     ];
