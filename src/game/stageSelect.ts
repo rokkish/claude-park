@@ -24,13 +24,13 @@ export function stageLabel(stages: readonly StageData[], index: number): string 
  *
  * "1-2" のようなラベルと "stage-02" のような id の両方を受け付ける。
  */
-export function resolveStartIndex(
+export function findStageIndex(
   stages: readonly StageData[],
   raw: string | null | undefined,
-): number {
-  if (!raw) return 0;
+): number | null {
+  if (!raw) return null;
   const q = raw.trim().toLowerCase();
-  if (!q) return 0;
+  if (!q) return null;
 
   for (let i = 0; i < stages.length; i++) {
     if (stageLabel(stages, i).toLowerCase() === q) return i;
@@ -38,5 +38,13 @@ export function resolveStartIndex(
   for (let i = 0; i < stages.length; i++) {
     if (stages[i]!.id.toLowerCase() === q) return i;
   }
-  return 0;
+  return null;
+}
+
+/** 見つからなければ先頭。呼び出し側が「指定の有無」を区別しないとき用。 */
+export function resolveStartIndex(
+  stages: readonly StageData[],
+  raw: string | null | undefined,
+): number {
+  return findStageIndex(stages, raw) ?? 0;
 }

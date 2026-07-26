@@ -8,7 +8,7 @@ import { Renderer2D } from "./engine/renderer2d";
 import { TouchInput, isCoarsePointer, validateTouchButtons } from "./engine/touch";
 import { Game } from "./game/game";
 import { STAGES } from "./stages/index";
-import { resolveStartIndex } from "./game/stageSelect";
+import { findStageIndex } from "./game/stageSelect";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
 if (!canvas) throw new Error("#game キャンバスが見つかりません");
@@ -35,12 +35,14 @@ if (STAGES.length === 0) throw new Error("ステージが1つも登録されて�
 
 // ?stage=1-2 や ?stage=stage-02 で任意のステージから始められる。
 // 動作確認用で、既知のステージに一致しない値は黙って先頭に落とす。
-const startIndex = resolveStartIndex(
-  STAGES,
-  new URLSearchParams(location.search).get("stage"),
-);
+// 指定があった場合だけ選択画面を飛ばす。動作確認で毎回選ばされないため。
+const requested = findStageIndex(STAGES, new URLSearchParams(location.search).get("stage"));
 
-const game = new Game(input, STAGES, { touchMode, startIndex });
+const game = new Game(input, STAGES, {
+  touchMode,
+  startIndex: requested ?? 0,
+  skipSelect: requested !== null,
+});
 
 // 全ステージ踏破中だけシェアボタンを出す。状態が変わったときだけ DOM を触る。
 const syncShareButton = setupShareButton(

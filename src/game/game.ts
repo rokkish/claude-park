@@ -21,6 +21,7 @@ import { Inventory, SignalBus } from "./signals";
 import { loadStage, type Stage } from "./stage";
 import type { StageData } from "./stageData";
 import { stageLabel } from "./stageSelect";
+import { listWorlds, type WorldEntry } from "../stages/worlds";
 import type { GimmickContext } from "./gimmicks/types";
 import { VIEW_H, VIEW_W } from "./tuning";
 import { formatTime } from "../engine/time";
@@ -28,7 +29,7 @@ import { VERSION_LABEL } from "../version";
 // 副作用 import: 全ギミックの registry 登録。loadStage より前に必ず評価される必要がある。
 import "./gimmicks/index";
 
-export type GamePhase = "title" | "playing" | "cleared";
+export type GamePhase = "select" | "playing" | "cleared";
 
 /** 操作説明の1行ぶん。キーボードとタッチで表示は変わるが、対応は1箇所で持つ。 */
 interface ControlRow {
@@ -61,7 +62,7 @@ export class Game {
   private view: CameraView;
   private readonly ctx: GimmickContext;
 
-  private _phase: GamePhase = "title";
+  private _phase: GamePhase = "select";
   /** 描画アニメ用の経過秒。物理には使わない。 */
   private time = 0;
 
@@ -76,6 +77,12 @@ export class Game {
   /** 画面上のタッチボタンで遊んでいるか。操作説明の文面だけを切り替える。 */
   private readonly touchMode: boolean;
 
+  /** 選択画面に出すワールド一覧。ステージ登録から組み立てる。 */
+  private readonly worlds: WorldEntry[];
+  private selectedWorld = 0;
+  /** 左右の押しっぱなしで選択が流れないよう、立ち上がりだけ拾う。 */
+  private navHeld = false;
+
   /**
    * 操作説明の表示率 1..0。最初の入力で 0 へ向かう。
    * 読み終えた説明が画面中央を占め続けると、ステージが縦方向を使えない。
@@ -85,10 +92,11 @@ export class Game {
   constructor(
     private readonly input: InputSource,
     stageData: StageData | StageData[],
-    opts: { touchMode?: boolean; startIndex?: number } = {},
+    opts: { touchMode?: boolean; startIndex?: number; skipSelect?: boolean } = {},
   ) {
     this.touchMode = opts.touchMode ?? false;
     this.stages = Array.isArray(stageData) ? stageData : [stageData];
+    this.worlds = listWorlds(this.stages);
     if (this.stages.length === 0) throw new Error("Game: ステージが1つも登録されていません");
     this._stage = loadStage(this.stages[0]!);
     this.world = { grid: this._stage.grid, solids: [], actors: [] };
@@ -112,6 +120,8 @@ export class Game {
     // 開始位置の指定。範囲外は黙って先頭に落とす（URL 由来の値が来るため）。
     const start = Math.trunc(opts.startIndex ?? 0);
     if (start > 0 && start < this.stages.length) this.switchToStage(start);
+    // ?stage= が指定されたときは選択画面を挟まない（動作確認用の入口なので）。
+    if (opts.skipSelect) this._phase = "playing";
   }
 
   /** ロード済みステージ。HUD と結合テストから参照する。 */
@@ -157,11 +167,44 @@ export class Game {
 
   /** クリア後、Enter で次のステージへ。最終ステージの次は先頭に戻る (要件: 進行はループ)。 */
   private advanceStage(): void {
-    const next = (this.stageIndex + 1) % this.stages.length;
-    // 先頭に戻る＝新しい通しの開始なので、通し計測をここで 0 に戻す。
-    if (next === 0) this.runSeconds = 0;
+    const next = this.stageIndex + 1;
+    // 最後まで行ったら選択画面へ戻す。ワールドを跨いで延々と続くより、
+    // 「どのワールドを遊ぶか」を選び直せる方が構造に合う。
+    if (next >= this.stages.length) {
+      this.runSeconds = 0;
+      this.switchToStage(0);
+      this._phase = "select";
+      return;
+    }
     this.switchToStage(next);
     this._phase = "playing";
+  }
+
+  /** 選択画面の操作。左右で選び、ジャンプか Enter で決定する。 */
+  private updateSelect(): void {
+    // どちらのプレイヤーの入力でも動かせる。2人で1台を触るので、
+    // 「どちらが選ぶか」を決めさせる必要はない。
+    let dir = 0;
+    let confirm = this.input.wasPressed("Enter");
+    for (let i = 0; i < this.players.length; i++) {
+      const inp = this.input.sample(i);
+      if (inp.right) dir = 1;
+      else if (inp.left) dir = -1;
+      if (inp.jumpPressed) confirm = true;
+    }
+
+    if (dir !== 0 && !this.navHeld) {
+      const n = this.worlds.length;
+      this.selectedWorld = (this.selectedWorld + dir + n) % n;
+    }
+    this.navHeld = dir !== 0;
+
+    if (confirm) {
+      const entry = this.worlds[this.selectedWorld];
+      if (entry) this.switchToStage(entry.firstIndex);
+      this.runSeconds = 0;
+      this._phase = "playing";
+    }
   }
 
   get phase(): GamePhase {
@@ -206,8 +249,8 @@ export class Game {
     }
 
     switch (this.phase) {
-      case "title":
-        if (this.input.wasPressed("Enter")) this.start();
+      case "select":
+        this.updateSelect();
         break;
       case "playing":
         this.stageSeconds += dt;
@@ -300,27 +343,8 @@ export class Game {
   }
 
   private renderHud(r: Renderer): void {
-    if (this._phase === "title") {
-      r.setAlpha(0.82);
-      r.rect(0, 0, VIEW_W, VIEW_H, "#000000");
-      r.setAlpha(1);
-      r.text("CLAUDE PARK", VIEW_W / 2, 130, {
-        color: PALETTE.accent,
-        size: 44,
-        align: "center",
-      });
-      r.text("2人で協力しないとクリアできません", VIEW_W / 2, 164, {
-        color: PALETTE.textPrimary,
-        size: 16,
-        align: "center",
-      });
-      const bottom = this.drawControlBlock(r, 200);
-      const startHint = this.touchMode ? "画面をタップでスタート" : "Enter でスタート";
-      r.text(startHint, VIEW_W / 2, bottom + 34, {
-        color: PALETTE.textPrimary,
-        size: 18,
-        align: "center",
-      });
+    if (this._phase === "select") {
+      this.renderSelect(r);
       return;
     }
 
@@ -382,6 +406,82 @@ export class Game {
         align: "center",
       });
     }
+  }
+
+  /**
+   * ワールド選択画面。初回はここから始まる。
+   * 左右で選び、ジャンプか Enter で決定する。上下を使わないのは、
+   * タッチの操作パッドに上下が無く、同じ操作で両対応にしたいため。
+   */
+  private renderSelect(r: Renderer): void {
+    r.setAlpha(0.86);
+    r.rect(0, 0, VIEW_W, VIEW_H, "#000000");
+    r.setAlpha(1);
+
+    r.text("CLAUDE PARK", VIEW_W / 2, 62, {
+      color: PALETTE.accent,
+      size: 40,
+      align: "center",
+    });
+    r.text("2人で協力しないとクリアできません", VIEW_W / 2, 88, {
+      color: PALETTE.textPrimary,
+      size: 14,
+      align: "center",
+    });
+
+    const gap = 24;
+    const n = Math.max(1, this.worlds.length);
+    const cardW = Math.min(220, (VIEW_W - 140 - gap * (n - 1)) / n);
+    const cardH = 92;
+    const top = 116;
+    const totalW = cardW * n + gap * (n - 1);
+    let x = (VIEW_W - totalW) / 2;
+
+    this.worlds.forEach((entry, i) => {
+      this.drawWorldCard(r, entry, x, top, cardW, cardH, i === this.selectedWorld);
+      x += cardW + gap;
+    });
+
+    const hint = this.touchMode
+      ? "◀ ▶ で選択　▲ で決定"
+      : "← → で選択　Enter で決定";
+    r.text(hint, VIEW_W / 2, top + cardH + 26, {
+      color: PALETTE.textPrimary,
+      size: 15,
+      align: "center",
+    });
+
+    this.drawControlBlock(r, top + cardH + 52);
+  }
+
+  private drawWorldCard(
+    r: Renderer,
+    entry: WorldEntry,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    selected: boolean,
+  ): void {
+    r.roundRect(x, y, w, h, 10, selected ? PALETTE.tileTop : PALETTE.tile);
+    if (selected) {
+      r.strokeRect(x, y, w, h, PALETTE.accent, 2);
+    }
+    r.text(`${entry.world}.`, x + w / 2, y + 38, {
+      color: selected ? PALETTE.accent : PALETTE.textDim,
+      size: 26,
+      align: "center",
+    });
+    r.text(entry.name, x + w / 2, y + 62, {
+      color: selected ? PALETTE.textPrimary : PALETTE.textDim,
+      size: 17,
+      align: "center",
+    });
+    r.text(`${entry.stageCount} ステージ`, x + w / 2, y + 80, {
+      color: PALETTE.textDim,
+      size: 11,
+      align: "center",
+    });
   }
 
   /**

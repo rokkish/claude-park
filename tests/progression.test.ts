@@ -64,11 +64,11 @@ describe("ステージ進行", () => {
     ]);
   });
 
-  it("クリア後の Enter で次のステージへ進み、最後は先頭に戻る", () => {
+  it("クリア後の Enter で次のステージへ進み、最後はワールド選択へ戻る", () => {
     const { game, input, step } = newGame();
     const visited: string[] = [];
 
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < STAGES.length; i++) {
       visited.push(game.stage.data.id);
       forceClear(game, step);
       expect(game.phase).toBe("cleared");
@@ -83,11 +83,14 @@ describe("ステージ進行", () => {
       "stage-04",
       "stage-05",
       "stage-06",
-      "stage-01",
     ]);
+    // 最後まで行ったら選択画面。ワールドを跨いで延々と続くより、
+    // どのワールドを遊ぶか選び直せる方が構造に合う。
+    expect(game.phase).toBe("select");
+    expect(game.stage.data.id).toBe("stage-01");
   });
 
-  it("進行後はタイトルに戻らず、そのまま遊べる状態になる", () => {
+  it("進行後は選択画面に戻らず、そのまま遊べる状態になる", () => {
     const { game, input, step } = newGame();
     forceClear(game, step);
     input.press("Enter");

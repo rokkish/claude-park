@@ -8,6 +8,7 @@
  * stage: 1..N（既定 1）
  * pose:
  *   start   スポーン直後（全ステージ共通・既定）
+ *   select  ワールド選択画面
  *   1-1: boost  P1 の頭に P2 が乗った状態
  *        open   P2 が感圧板を踏み、ゲートが開いた状態
  *        clear  鍵を取って2人がゴールに入った状態
@@ -37,8 +38,10 @@ const data = STAGES[stageNo - 1];
 if (!data) throw new Error(`ステージ ${stageNo} は存在しません (1..${STAGES.length})`);
 
 const input = new ScriptedInput([idle(), idle()]);
-const game = new Game(input, data, { touchMode });
-game.start();
+// select は全ワールドを並べるので、単一ステージではなく登録全体を渡す。
+const game = new Game(input, pose === "select" ? STAGES : data, { touchMode });
+// pose=select のときだけワールド選択画面のまま焼く
+if (pose !== "select") game.start();
 
 const step = (n: number): void => {
   for (let i = 0; i < n; i++) game.step(DT);
