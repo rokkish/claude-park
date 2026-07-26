@@ -75,6 +75,11 @@ npx vite-node scripts/preview-clawd.ts out.png              # キャラの各ポ
 npx vite-node scripts/preview-stage.ts out.png 5 start       # out.png [stage] [pose]
 ```
 
+### ステージを作る
+
+手順とギミック一覧は [docs/AUTHORING.md](docs/AUTHORING.md) にまとめてあります。
+既存ギミックの組み合わせだけなら、JSON 1つと登録2行で足ります。
+
 ## 設計
 
 詳細は [docs/SPEC.md](docs/SPEC.md) を参照してください。要点だけ挙げると:
