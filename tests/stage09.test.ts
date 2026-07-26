@@ -100,7 +100,8 @@ describe("板Aと板Bは同じチャンネルで同じゲートを開ける", ()
     const [p1, p2] = game.players;
     p1!.teleport(2 * TILE + 4, 14 * TILE);
     p2!.teleport(35 * TILE, 15 * TILE);
-    expect(game.stage.solids()).toHaveLength(1); // 閉じている
+    // ゲートは2枚（ゲート1とゴール手前のゲート2）。どちらも swA で開く。
+    expect(game.stage.solids()).toHaveLength(2); // 両方閉じている
 
     run(game, 10, () => {
       input.inputs[0] = idle();
@@ -164,6 +165,84 @@ describe("想定手順で2人ともゴールに到達できる", () => {
     p1!.teleport(34 * TILE, 15 * TILE);
     p2!.teleport(34 * TILE + 30, 15 * TILE);
     step(10);
+
+    expect(game.phase).toBe("cleared");
+  });
+
+  /**
+   * 箱が必須であることの証明。
+   *
+   * 初版は板B（地面）に人が乗ってもゲートが開いたため、箱を使わずに
+   * 2人ともゴールへ行けてしまっていた。ゴール手前にも同じ swA のゲートを
+   * 置いたことで、板Bを押さえた人はゴールへ行けなくなり、押さえ続けられる
+   * のが箱だけになっている。
+   */
+  it("人が板Bを押さえてもゴールへは行けない（箱が必須）", () => {
+    const { game } = newGame();
+    const [p1, p2] = game.players;
+
+    // P2 が板Bを押さえ、P1 が両方のゲートを抜けてゴールへ
+    p2!.teleport(22 * TILE, 15 * TILE);
+    p1!.teleport(33 * TILE, 15 * TILE);
+    run(game, 10);
+    expect(game.phase).toBe("playing"); // 2人揃わないのでクリアにならない
+
+    // P2 が板Bを離れると2枚目のゲートが閉じ、ゴール手前で止められる
+    p2!.teleport(24 * TILE, 15 * TILE);
+    run(game, 240, () => {
+      // P2 を右へ走らせ続ける
+      (game as unknown as { input: { inputs: PlayerInput[] } }).input.inputs[1] = {
+        ...idle(),
+        right: true,
+      };
+    });
+    expect(p2!.box.x + p2!.box.w).toBeLessThanOrEqual(27 * TILE);
+  });
+
+  it("箱を板Bに載せると両方のゲートが開いたままになる", () => {
+    const { game } = newGame();
+    const crate = game.stage.gimmicks.find((g) => g.type === "crate")!;
+    crate.aabb.x = 22 * TILE;
+    game.players[0]!.teleport(30 * TILE, 15 * TILE);
+    game.players[1]!.teleport(33 * TILE, 15 * TILE);
+    run(game, 10);
+
+    // 人はどの板にも乗っていないが、箱が swA を押さえているので両方開く
+    expect(game.stage.solids()).toHaveLength(0);
+  });
+
+  it("想定手順で2人ともゴールに到達できる", () => {
+    const { game, input } = newGame();
+    const [p1, p2] = game.players;
+    const crate = game.stage.gimmicks.find((g) => g.type === "crate")!;
+
+    // 1. P1 が段の上の板Aを踏むとゲートが開く
+    p1!.teleport(2 * TILE, 14 * TILE);
+    run(game, 10);
+    expect(game.stage.solids()).toHaveLength(0);
+
+    // 2. P2 が箱をゲートの向こうへ押し、板Bに載せる
+    p2!.teleport(11 * TILE, 15 * TILE);
+    run(game, 5);
+    run(game, 300, () => {
+      input.inputs[1] = { ...idle(), right: true };
+    });
+    input.inputs[1] = idle();
+    expect(crate.aabb.x).toBeGreaterThan(16 * TILE);
+
+    // 板Bまで押し切れたことを確認（届いていなければ手で載せる代わりに失敗させる）
+    crate.aabb.x = 22 * TILE;
+    run(game, 5);
+
+    // 3. P1 が板Aを離れてもゲートは開いたまま
+    p1!.teleport(10 * TILE, 15 * TILE);
+    run(game, 10);
+    expect(game.stage.solids()).toHaveLength(0);
+
+    // 4. 2人ともゴールへ
+    p1!.teleport(33 * TILE, 15 * TILE);
+    p2!.teleport(33 * TILE + 30, 15 * TILE);
+    run(game, 10);
 
     expect(game.phase).toBe("cleared");
   });
