@@ -30,6 +30,8 @@ const CLEAR_SETUP: Record<
   "stage-06": { goal: { x: 29, y: 9 } },
   // 2-4: 鍵は2つ。ゴールは棚の上 (30,3)、鍵は中段 (12,6) と島 (10,3)。
   "stage-11": { goal: { x: 30, y: 3 }, key: { x: 12, y: 6 }, key2: { x: 10, y: 3 } },
+  // 2-5: 鍵は2つ。ゴールは棚の上 (30,3)、鍵は宙 (28,6) と島 (10,3)。
+  "stage-99": { goal: { x: 30, y: 3 }, key: { x: 28, y: 6 }, key2: { x: 10, y: 3 } },
   "stage-07": { goal: { x: 34, y: 15 } },
   "stage-08": { goal: { x: 33, y: 15 } },
   "stage-09": { goal: { x: 34, y: 15 } },
@@ -67,7 +69,7 @@ function forceClear(game: Game, step: (n?: number) => void): void {
 }
 
 describe("ステージ進行", () => {
-  it("11ステージ（ワールド1・2が各4本、ワールド3が3本）が登録されている", () => {
+  it("12ステージ（ワールド1が4本、ワールド2が5本、ワールド3が3本）が登録されている", () => {
     expect(STAGES.map((s) => s.id)).toEqual([
       "stage-01",
       "stage-02",
@@ -77,6 +79,7 @@ describe("ステージ進行", () => {
       "stage-05",
       "stage-06",
       "stage-11",
+      "stage-99",
       "stage-07",
       "stage-08",
       "stage-09",
@@ -104,6 +107,7 @@ describe("ステージ進行", () => {
       "stage-05",
       "stage-06",
       "stage-11",
+      "stage-99",
       "stage-07",
       "stage-08",
       "stage-09",
@@ -167,11 +171,12 @@ describe("ステージ進行", () => {
       "stage-05",
       "stage-06",
       "stage-11",
+      "stage-99",
       "stage-07",
       "stage-08",
     ];
 
-    // 途中の8ステージは、クリアしても isAllCleared はまだ立たない
+    // 途中の11ステージは、クリアしても isAllCleared はまだ立たない
     for (const id of nonFinalIds) {
       expect(game.stage.data.id).toBe(id);
       forceClear(game, step);
