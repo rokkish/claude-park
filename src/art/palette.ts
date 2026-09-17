@@ -15,6 +15,12 @@ export const PALETTE = {
   crateEdge: "#A88463",
   gateOpen: "#7A5C4A",
 
+  /** 壊せるブロック。箱(#8A6B4F)より赤みを強くして「地形の一部だが壊れる」を示す。 */
+  brick: "#9C4A3C",
+  brickEdge: "#C4705F",
+  /** ボール。シグナルの光と同じ明るい色で、動くものとして目立たせる。 */
+  ball: "#F0E5D8",
+
   accent: "#E3B341",
   signalOn: "#F0E5D8",
 

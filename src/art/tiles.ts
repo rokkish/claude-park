@@ -5,6 +5,8 @@ import { PALETTE } from "./palette";
 
 /** 上面ハイライトの帯の太さ (px)。 */
 const TOP_HIGHLIGHT_H = 4;
+/** ブロックの縁取りの太さ (px)。 */
+const BRICK_EDGE = 2;
 
 /**
  * タイルグリッドを描画する (SPEC §6.4)。
@@ -24,6 +26,15 @@ export function drawTiles(r: Renderer, grid: TileGrid): void {
           if (!grid.isSolid(tx, ty - 1)) {
             r.rect(x, y, ts, TOP_HIGHLIGHT_H, PALETTE.tileTop);
           }
+          break;
+        }
+        case Tile.Brick: {
+          const x = tx * ts;
+          const y = ty * ts;
+          r.rect(x, y, ts, ts, PALETTE.brick);
+          // 上と左の縁を明るくして、隣り合っていても1個ずつのブロックに見せる。
+          r.rect(x, y, ts, BRICK_EDGE, PALETTE.brickEdge);
+          r.rect(x, y, BRICK_EDGE, ts, PALETTE.brickEdge);
           break;
         }
         case Tile.OneWay:

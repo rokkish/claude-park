@@ -67,6 +67,7 @@ export function loadStage(data: StageData): Stage {
     },
 
     reset(): void {
+      grid.reset();
       for (const g of gimmicks) g.reset?.();
     },
   };

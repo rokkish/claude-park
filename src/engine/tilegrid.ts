@@ -11,6 +11,8 @@ export const enum Tile {
   OneWay = 2,
   /** 予約: 触れるとリスポーン。PoC では未使用。 */
   Hazard = 3,
+  /** 壊せるブロック (World 4)。当たりは Solid と同じで、ボールが当たると Empty になる。 */
+  Brick = 4,
 }
 
 /** グリッド文字 → Tile。ステージ JSON の見た目をそのまま維持するための対応表。 */
@@ -19,6 +21,7 @@ export const TILE_LEGEND: Record<string, Tile> = {
   "#": Tile.Solid,
   "-": Tile.OneWay,
   "^": Tile.Hazard,
+  B: Tile.Brick,
 };
 
 export class TileGrid {
@@ -26,12 +29,15 @@ export class TileGrid {
   readonly rows: number;
   readonly tileSize: number;
   private readonly cells: Uint8Array;
+  /** ロード時の地形。ブロックが壊れた後に reset() で戻すための控え。 */
+  private readonly initial: Uint8Array;
 
   constructor(cols: number, rows: number, tileSize: number, cells: Uint8Array) {
     this.cols = cols;
     this.rows = rows;
     this.tileSize = tileSize;
     this.cells = cells;
+    this.initial = cells.slice();
   }
 
   /**
@@ -66,7 +72,19 @@ export class TileGrid {
   }
 
   isSolid(tx: number, ty: number): boolean {
-    return this.at(tx, ty) === Tile.Solid;
+    const t = this.at(tx, ty);
+    return t === Tile.Solid || t === Tile.Brick;
+  }
+
+  /** 地形を書き換える（ブロックの破壊）。グリッド外は無視する。 */
+  set(tx: number, ty: number, tile: Tile): void {
+    if (tx < 0 || ty < 0 || tx >= this.cols || ty >= this.rows) return;
+    this.cells[ty * this.cols + tx] = tile;
+  }
+
+  /** ロード時の地形に戻す。ステージのやり直しで壊したブロックを復元する。 */
+  reset(): void {
+    this.cells.set(this.initial);
   }
 
   /** 矩形が Solid タイルと重なるか。物理の衝突判定の一次ソース。 */
