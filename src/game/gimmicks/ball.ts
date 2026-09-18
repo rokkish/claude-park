@@ -9,7 +9,8 @@ import type { Gimmick, GimmickContext, GimmickDef, GimmickParams, SpawnContext }
  * ボール (World 4 のキーアイデア「ブロック崩し」)。
  *
  * 人が触れると、その人の中心からボールの中心へ向かう向きに打ち出される。
- * 飛んでいる間は
+ * 床に置いたボールは横にしか打てず、浮かせたボールは真下から跳んで触れれば
+ * 真上に打てる（4-2）。飛んでいる間は
  * - ブロック (`B`) に当たると、そのブロックを壊して跳ね返る
  * - 人に当たると跳ね返る（人が板の役をする）
  * - 壁 (`#`) に当たると消えて、少し置いてから元の位置に戻る
@@ -29,10 +30,12 @@ const DEFAULT_SPEED = 220;
 /** 壁に当たって消えてから元の位置に戻るまでの間 (秒)。「消えた」と分かる長さ。 */
 const RESPAWN_DELAY = 0.4;
 /**
- * 人との中心のずれがこれ未満なら、その軸の成分を 0 にする (px)。
- * 床に立った人が水平に打つとき、着地の端数で斜めに飛ばないようにする。
+ * 狙いを軸に揃える比率。中心のずれの小さい方の成分が、大きい方のこの割合未満なら 0 にする。
+ * 床に立った人が横から打てば水平に、真下から跳んで触れれば真上に飛び、
+ * 斜めになるのは中心のずれが対角に近いときだけ。着地の端数や数 px のずれで
+ * 斜めに飛ばないようにするための規則で、狙いは「横・縦・斜め」の3種類になる。
  */
-const AIM_SNAP = 4;
+const AIM_SNAP_RATIO = 0.5;
 
 class Ball implements Gimmick {
   readonly type = "ball";
@@ -83,12 +86,17 @@ class Ball implements Gimmick {
         const tile = grid.at(tx, ty);
         if (tile === Tile.Brick) {
           grid.set(tx, ty, Tile.Empty);
-          // 横から入ったなら水平成分、上下から入ったなら垂直成分だけを反転する。
+          // 食い込みの浅い軸から入ったとみなし、その成分だけを反転する。
+          // 「前の位置がブロックの外側か」で判定すると、位置の浮動小数の誤差
+          // （220/60 を積んだ 374.00000000000006 など）で境界ちょうどの比較が
+          // 裏返り、反転せずに次のブロックまで突き抜けることがある。
           // 位置は1フレーム前に戻す（1フレームの移動量はボールより小さいので
           // これで重なりが解消する）。
           const bx = tx * ts;
-          const fromSide = prevX + SIZE <= bx || prevX >= bx + ts;
-          if (fromSide) this.vx = -this.vx;
+          const by = ty * ts;
+          const depthX = Math.min(this.aabb.x + SIZE - bx, bx + ts - this.aabb.x);
+          const depthY = Math.min(this.aabb.y + SIZE - by, by + ts - this.aabb.y);
+          if (depthX < depthY) this.vx = -this.vx;
           else this.vy = -this.vy;
           this.aabb.x = prevX;
           this.aabb.y = prevY;
@@ -109,8 +117,8 @@ class Ball implements Gimmick {
     // 既に離れる向きに飛んでいるなら、重なりが残っていても二度打ちしない。
     if (this.moving && this.vx * dx + this.vy * dy > 0) return;
 
-    if (Math.abs(dx) < AIM_SNAP) dx = 0;
-    if (Math.abs(dy) < AIM_SNAP) dy = 0;
+    if (Math.abs(dx) < Math.abs(dy) * AIM_SNAP_RATIO) dx = 0;
+    else if (Math.abs(dy) < Math.abs(dx) * AIM_SNAP_RATIO) dy = 0;
     let len = Math.hypot(dx, dy);
     if (len === 0) {
       // 中心が完全に重なった（静止中に真上から乗った等）。来た向きへ押し返す。

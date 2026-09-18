@@ -12,11 +12,13 @@ import stage07 from "./stage-07.json";
 import stage08 from "./stage-08.json";
 import stage09 from "./stage-09.json";
 import stage12 from "./stage-12.json";
+import stage13 from "./stage-13.json";
 
 // 全ステージのインポートを集約するモジュール (SPEC §1.1, §8.2)。
 // ステージを追加する場合は、import を1行足して配列にエントリを1つ追加するだけでよい。
 // stage-10 は World 1 の4本目 (1-4)、stage-11 は World 2 の4本目 (2-4)、
-// stage-99 は World 2 の5本目 (2-5)、stage-12 は World 4 の1本目 (4-1)。
+// stage-99 は World 2 の5本目 (2-5)、stage-12 は World 4 の1本目 (4-1)、
+// stage-13 は 4-2。
 // id の番号は配列順とは無関係（SPEC §7.11）で、表示ラベルは world フィールドと
 // この配列順だけが決める。既存 id の空き番号を使い、配列上は所属ワールドの
 // 末尾に挿入する。
@@ -34,4 +36,5 @@ export const STAGES: StageData[] = [
   stage08 as StageData,
   stage09 as StageData,
   stage12 as StageData,
+  stage13 as StageData,
 ];
