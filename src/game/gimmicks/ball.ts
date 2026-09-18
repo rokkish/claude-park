@@ -8,12 +8,13 @@ import type { Gimmick, GimmickContext, GimmickDef, GimmickParams, SpawnContext }
 /**
  * ボール (World 4 のキーアイデア「ブロック崩し」)。
  *
- * 人が触れると、その人の中心からボールの中心へ向かう向きに打ち出される。
- * 床に置いたボールは横にしか打てず、浮かせたボールは真下から跳んで触れれば
- * 真上に打てる（4-2）。飛んでいる間は
+ * 人が触れると、その人から離れる向きに打ち出される。向きは3種類:
+ * 立って横から当てれば水平、跳んで横から当てれば 45° 斜め上、真下から当てれば真上。
+ * 床に置いたボールは立ったままなら横にしか打てず、浮かせたボールは真下から
+ * 跳んで触れれば真上に打てる（4-2）。飛んでいる間は
  * - ブロック (`B`) に当たると、そのブロックを壊して跳ね返る
  * - 人に当たると跳ね返る（人が板の役をする）
- * - 壁 (`#`) と、閉じたゲートや足場（ギミックの Solid）に当たると消えて、
+ * - 壁 (`#`)、閉じたゲートや足場（ギミックの Solid）、箱に当たると消えて、
  *   少し置いてから元の位置に戻る
  *
  * 壁で跳ね返らせないのは意図的で、跳ね返り続けるボールは放っておくだけで
@@ -31,12 +32,15 @@ const DEFAULT_SPEED = 220;
 /** 壁に当たって消えてから元の位置に戻るまでの間 (秒)。「消えた」と分かる長さ。 */
 const RESPAWN_DELAY = 0.4;
 /**
- * 狙いを軸に揃える比率。中心のずれの小さい方の成分が、大きい方のこの割合未満なら 0 にする。
- * 床に立った人が横から打てば水平に、真下から跳んで触れれば真上に飛び、
- * 斜めになるのは中心のずれが対角に近いときだけ。着地の端数や数 px のずれで
- * 斜めに飛ばないようにするための規則で、狙いは「横・縦・斜め」の3種類になる。
+ * 「真下から」とみなす比率。中心の横のずれが縦のずれのこの割合未満なら、真上（真下）に飛ぶ。
+ * それ以外は横からの接触で、地上なら水平、空中なら 45° 斜め上に飛ぶ (4-4)。
+ * 向きを中心のずれの比で決めると、接触した瞬間の高さで角度がぶれて狙えない。
+ * 状態で決めれば「立って返せば水平、跳んで返せば 45°」と幾何が固定され、
+ * 立つ位置で狙える（45° なら 1.5 タイル先の天井に当たる、など）。
  */
-const AIM_SNAP_RATIO = 0.5;
+const VERTICAL_RATIO = 0.5;
+/** 空中で横から当てたときの斜めの向き。45° なので x と y の成分が等しい。 */
+const DIAGONAL = Math.SQRT1_2;
 
 class Ball implements Gimmick {
   readonly type = "ball";
@@ -124,26 +128,36 @@ class Ball implements Gimmick {
     return this.moving && this.respawnIn <= 0 ? this.aabb : null;
   }
 
-  onOverlap(source: OverlapSource, _ctx: GimmickContext): void {
-    // 箱では打てない。消えている間は当たらない。
-    if (!source.isPlayer || this.respawnIn > 0) return;
+  onOverlap(source: OverlapSource, ctx: GimmickContext): void {
+    if (this.respawnIn > 0) return;
+    // 箱は壁と同じ。打てないし、飛んでいる球が当たれば消える。
+    if (!source.isPlayer) {
+      if (this.moving) this.vanish();
+      return;
+    }
 
-    let dx = this.aabb.x + SIZE / 2 - (source.box.x + source.box.w / 2);
-    let dy = this.aabb.y + SIZE / 2 - (source.box.y + source.box.h / 2);
+    const dx = this.aabb.x + SIZE / 2 - (source.box.x + source.box.w / 2);
+    const dy = this.aabb.y + SIZE / 2 - (source.box.y + source.box.h / 2);
     // 既に離れる向きに飛んでいるなら、重なりが残っていても二度打ちしない。
     if (this.moving && this.vx * dx + this.vy * dy > 0) return;
 
-    if (Math.abs(dx) < Math.abs(dy) * AIM_SNAP_RATIO) dx = 0;
-    else if (Math.abs(dy) < Math.abs(dx) * AIM_SNAP_RATIO) dy = 0;
-    let len = Math.hypot(dx, dy);
-    if (len === 0) {
-      // 中心が完全に重なった（静止中に真上から乗った等）。来た向きへ押し返す。
-      dx = this.vx < 0 ? -1 : 1;
-      dy = 0;
-      len = 1;
+    if (Math.abs(dx) < Math.abs(dy) * VERTICAL_RATIO) {
+      // 真下（真上）から: 縦に飛ぶ
+      this.vx = 0;
+      this.vy = Math.sign(dy) * this.speed;
+      return;
     }
-    this.vx = (dx / len) * this.speed;
-    this.vy = (dy / len) * this.speed;
+    // 横から。中心が完全に重なっていたら来た向きへ押し返す。
+    const dirX = dx !== 0 ? Math.sign(dx) : this.vx < 0 ? -1 : 1;
+    const player = ctx.players.find((p) => p.box === source.box);
+    if (player && !player.grounded) {
+      // 空中で当てた: 45° 斜め上
+      this.vx = dirX * DIAGONAL * this.speed;
+      this.vy = -DIAGONAL * this.speed;
+    } else {
+      this.vx = dirX * this.speed;
+      this.vy = 0;
+    }
   }
 
   private vanish(): void {

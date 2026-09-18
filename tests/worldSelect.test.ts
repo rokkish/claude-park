@@ -41,7 +41,7 @@ describe("listWorlds", () => {
       { world: 1, name: "スイッチ", firstIndex: 0, stageCount: 4 },
       { world: 2, name: "動く足場", firstIndex: 4, stageCount: 5 },
       { world: 3, name: "運べる箱", firstIndex: 9, stageCount: 3 },
-      { world: 4, name: "ブロック崩し", firstIndex: 12, stageCount: 3 },
+      { world: 4, name: "ブロック崩し", firstIndex: 12, stageCount: 4 },
     ]);
   });
 
