@@ -39,6 +39,8 @@ const CLEAR_SETUP: Record<
   "stage-12": { goal: { x: 35, y: 12 } },
   // 4-2: ゴールは左上の棚 (2,7)。
   "stage-13": { goal: { x: 2, y: 7 } },
+  // 4-3: ゴールは右端の床 (74,12)。
+  "stage-14": { goal: { x: 74, y: 12 } },
 };
 
 function newGame(stages: StageData | StageData[] = STAGES): {
@@ -73,7 +75,7 @@ function forceClear(game: Game, step: (n?: number) => void): void {
 }
 
 describe("ステージ進行", () => {
-  it("14ステージ（ワールド1が4本、ワールド2が5本、ワールド3が3本、ワールド4が2本）が登録されている", () => {
+  it("15ステージ（ワールド1が4本、ワールド2が5本、ワールド3が3本、ワールド4が3本）が登録されている", () => {
     expect(STAGES.map((s) => s.id)).toEqual([
       "stage-01",
       "stage-02",
@@ -89,6 +91,7 @@ describe("ステージ進行", () => {
       "stage-09",
       "stage-12",
       "stage-13",
+      "stage-14",
     ]);
   });
 
@@ -119,6 +122,7 @@ describe("ステージ進行", () => {
       "stage-09",
       "stage-12",
       "stage-13",
+      "stage-14",
     ]);
     // 最後まで行ったら選択画面。ワールドを跨いで延々と続くより、
     // どのワールドを遊ぶか選び直せる方が構造に合う。
@@ -168,7 +172,7 @@ describe("ステージ進行", () => {
     expect(game.phase).toBe("playing");
   });
 
-  it("isAllCleared は最終ステージ(4-2)をクリアした瞬間だけ真になる", () => {
+  it("isAllCleared は最終ステージ(4-3)をクリアした瞬間だけ真になる", () => {
     const { game, input, step } = newGame();
     const nonFinalIds = [
       "stage-01",
@@ -184,9 +188,10 @@ describe("ステージ進行", () => {
       "stage-08",
       "stage-09",
       "stage-12",
+      "stage-13",
     ];
 
-    // 途中の13ステージは、クリアしても isAllCleared はまだ立たない
+    // 途中の14ステージは、クリアしても isAllCleared はまだ立たない
     for (const id of nonFinalIds) {
       expect(game.stage.data.id).toBe(id);
       forceClear(game, step);
@@ -198,9 +203,9 @@ describe("ステージ進行", () => {
       expect(game.isAllCleared).toBe(false); // プレイ中
     }
 
-    // 最終ステージ (stage-13 = 4-2) クリアで全踏破
+    // 最終ステージ (stage-14 = 4-3) クリアで全踏破
     forceClear(game, step);
-    expect(game.stage.data.id).toBe("stage-13");
+    expect(game.stage.data.id).toBe("stage-14");
     expect(game.isAllCleared).toBe(true);
 
     // 先頭に戻ったら降りる

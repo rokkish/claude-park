@@ -1,4 +1,4 @@
-import { applyCamera, fitCamera, type CameraView } from "../engine/camera";
+import { applyCamera, approachCamera, fitCamera, followCamera, type CameraView } from "../engine/camera";
 import type { InputSource } from "../engine/input";
 import {
   isCrushed,
@@ -61,6 +61,8 @@ export class Game {
   private readonly signals = new SignalBus();
   private readonly inventory = new Inventory();
   private view: CameraView;
+  /** "follow" は2人を追う。"fit" はステージ全体を収める（プレビュー用）。 */
+  private readonly cameraMode: "follow" | "fit";
   private readonly ctx: GimmickContext;
 
   private _phase: GamePhase = "select";
@@ -99,9 +101,15 @@ export class Game {
   constructor(
     private readonly input: InputSource,
     stageData: StageData | StageData[],
-    opts: { touchMode?: boolean; startIndex?: number; skipSelect?: boolean } = {},
+    opts: {
+      touchMode?: boolean;
+      startIndex?: number;
+      skipSelect?: boolean;
+      camera?: "follow" | "fit";
+    } = {},
   ) {
     this.touchMode = opts.touchMode ?? false;
+    this.cameraMode = opts.camera ?? "follow";
     this.stages = Array.isArray(stageData) ? stageData : [stageData];
     this.worlds = listWorlds(this.stages);
     if (this.stages.length === 0) throw new Error("Game: ステージが1つも登録されていません");
@@ -118,6 +126,7 @@ export class Game {
       inventory: this.inventory,
       grid: this._stage.grid,
       players: this.players,
+      solids: this.world.solids,
       requestClear: () => {
         this._phase = "cleared";
       },
@@ -157,6 +166,31 @@ export class Game {
       ...this.players,
       ...this.stage.gimmickActors.map((a) => ({ box: a.box, isPlayer: false })),
     ];
+    // やり直しとステージ切替では補間せずに目標へ飛ぶ。
+    this.view = this.cameraTarget();
+  }
+
+  /** いま映すべきカメラ。1画面ステージでは fitCamera と一致する。 */
+  private cameraTarget(): CameraView {
+    const { widthPx, heightPx } = this.stage.grid;
+    if (this.cameraMode === "fit") return fitCamera(widthPx, heightPx, VIEW_W, VIEW_H);
+    const targets = this.players.map((p) => p.box);
+    for (const g of this.stage.gimmicks) {
+      const t = g.cameraTarget?.();
+      if (t) targets.push(t);
+    }
+    return followCamera(
+      targets,
+      widthPx,
+      heightPx,
+      VIEW_W,
+      VIEW_H,
+    );
+  }
+
+  /** 描画に使うカメラ（テストとプレビューから読む）。 */
+  get cameraView(): CameraView {
+    return this.view;
   }
 
   /**
@@ -169,6 +203,7 @@ export class Game {
     this._stage = loadStage(this.stages[index]!);
     this.world = { grid: this._stage.grid, solids: [], actors: [] };
     this.ctx.grid = this._stage.grid;
+    this.ctx.solids = this.world.solids;
     this.view = fitCamera(
       this._stage.grid.widthPx,
       this._stage.grid.heightPx,
@@ -269,10 +304,12 @@ export class Game {
         this.stageSeconds += dt;
         this.runSeconds += dt;
         this.simulate(dt);
+        this.view = approachCamera(this.view, this.cameraTarget(), dt);
         break;
       case "cleared":
         // クリア後も落下だけは進めて、絵が止まって見えないようにする
         this.simulate(dt);
+        this.view = approachCamera(this.view, this.cameraTarget(), dt);
         // タイトルには戻さず、そのまま次のステージへ (SPEC §8.2 のステージ追加を
         // 実際に遊べる形にするための進行)。タッチ環境では #stage-area が
         // タップで Enter を送るので、この分岐だけで両対応になる。

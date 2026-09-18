@@ -39,7 +39,8 @@ if (!data) throw new Error(`ステージ ${stageNo} は存在しません (1..${
 
 const input = new ScriptedInput([idle(), idle()]);
 // select は全ワールドを並べるので、単一ステージではなく登録全体を渡す。
-const game = new Game(input, pose === "select" ? STAGES : data, { touchMode });
+// ステージ全体を1枚に収めたいので、追従カメラではなく全体表示にする。
+const game = new Game(input, pose === "select" ? STAGES : data, { touchMode, camera: "fit" });
 // pose=select のときだけワールド選択画面のまま焼く
 if (pose !== "select") game.start();
 

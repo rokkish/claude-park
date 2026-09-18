@@ -1,5 +1,5 @@
 import { PALETTE } from "../../art/palette";
-import type { AABB } from "../../engine/aabb";
+import { overlaps, type AABB } from "../../engine/aabb";
 import type { Renderer } from "../../engine/renderer";
 import { Tile } from "../../engine/tilegrid";
 import type { OverlapSource } from "../entities";
@@ -13,7 +13,8 @@ import type { Gimmick, GimmickContext, GimmickDef, GimmickParams, SpawnContext }
  * 真上に打てる（4-2）。飛んでいる間は
  * - ブロック (`B`) に当たると、そのブロックを壊して跳ね返る
  * - 人に当たると跳ね返る（人が板の役をする）
- * - 壁 (`#`) に当たると消えて、少し置いてから元の位置に戻る
+ * - 壁 (`#`) と、閉じたゲートや足場（ギミックの Solid）に当たると消えて、
+ *   少し置いてから元の位置に戻る
  *
  * 壁で跳ね返らせないのは意図的で、跳ね返り続けるボールは放っておくだけで
  * 全部のブロックを壊してしまい「壊しすぎるとゴールに届かない」を作れない。
@@ -105,7 +106,22 @@ class Ball implements Gimmick {
         if (tile === Tile.Solid) hitWall = true;
       }
     }
-    if (hitWall) this.vanish();
+    if (hitWall) {
+      this.vanish();
+      return;
+    }
+    // 閉じたゲートは壁と同じ。人は跳び越えられてもボールは通れない (4-3)。
+    for (const s of ctx.solids) {
+      if (overlaps(this.aabb, s.box)) {
+        this.vanish();
+        return;
+      }
+    }
+  }
+
+  /** 飛んでいる間はカメラに映す。打った球が先の地形を偵察する形になる。 */
+  cameraTarget(): AABB | null {
+    return this.moving && this.respawnIn <= 0 ? this.aabb : null;
   }
 
   onOverlap(source: OverlapSource, _ctx: GimmickContext): void {

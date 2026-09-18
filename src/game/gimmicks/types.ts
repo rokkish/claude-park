@@ -1,5 +1,5 @@
 import type { AABB } from "../../engine/aabb";
-import type { Actor } from "../../engine/physics";
+import type { Actor, SolidBody } from "../../engine/physics";
 import type { Renderer } from "../../engine/renderer";
 import type { TileGrid } from "../../engine/tilegrid";
 import type { OverlapSource, PlayerState } from "../entities";
@@ -11,6 +11,12 @@ export interface GimmickContext {
   inventory: Inventory;
   grid: TileGrid;
   players: readonly PlayerState[];
+  /**
+   * 前のステップで確定したギミック由来の Solid（閉じたゲート、足場）。
+   * 地形と同じ扱いにしたいギミック（ボール）が読む。1フレーム遅れるが、
+   * 開閉した同じフレームに当たるかどうかの差は知覚できない。
+   */
+  solids: readonly SolidBody[];
   /** ゴールが呼ぶ。以降のクリア演出はゲーム側の責務。 */
   requestClear(): void;
 }
@@ -53,6 +59,11 @@ export interface Gimmick {
    * 押し合いと「上に乗る」は Actor 同士の既存経路がそのまま効く。
    */
   actor?(): Actor | null;
+  /**
+   * 実装すると、返した矩形が追従カメラの対象に加わる（飛んでいるボール）。
+   * null の間は対象にしない。
+   */
+  cameraTarget?(): AABB | null;
   /** ステージリセット時に初期状態へ戻す。 */
   reset?(): void;
 }
