@@ -42,6 +42,7 @@ describe("listWorlds", () => {
       { world: 2, name: "動く足場", firstIndex: 4, stageCount: 5 },
       { world: 3, name: "運べる箱", firstIndex: 9, stageCount: 3 },
       { world: 4, name: "ブロック崩し", firstIndex: 12, stageCount: 4 },
+      { world: 5, name: "爆弾", firstIndex: 16, stageCount: 1 },
     ]);
   });
 
@@ -108,7 +109,7 @@ describe("ワールド選択画面", () => {
     tap(input, { jumpPressed: true });
     step();
 
-    expect(game.stage.data.id).toBe("stage-12"); // ワールド4（末尾）
+    expect(game.stage.data.id).toBe("stage-16"); // ワールド5（末尾）
   });
 
   it("P2 の入力でも選べる", () => {

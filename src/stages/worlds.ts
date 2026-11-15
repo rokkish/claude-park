@@ -10,6 +10,7 @@ export const WORLD_NAMES: Record<number, string> = {
   2: "動く足場",
   3: "運べる箱",
   4: "ブロック崩し",
+  5: "爆弾",
 };
 
 export interface WorldEntry {
