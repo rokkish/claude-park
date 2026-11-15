@@ -96,7 +96,7 @@ describe("walkRight / walkLeft", () => {
 
   it("walkLeft は左へ歩き、箱を押す", () => {
     const s = newStage(stage07);
-    rideOn(s.p1, { x: crate(s).x + TILE, y: crate(s).y + TILE, w: TILE, h: TILE }); // 箱の右隣、棚の上
+    standOn(s.p1, 13, 12); // 箱 (12,12) の右隣、棚の上
     const before = crate(s).x;
     walkLeft(s, s.p1, 30);
     expect(crate(s).x).toBeLessThan(before);

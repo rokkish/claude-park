@@ -20,49 +20,30 @@
  * オプションは必ず out.png より後ろに書く（前に書くと vite-node が自分の
  * オプションとして解釈する）。全オプションは `--help` か scripts/lib/pose.ts の USAGE。
  */
-import { readFileSync, writeFileSync } from "node:fs";
-import { ScriptedInput, type PlayerInput } from "../src/engine/input";
+import { writeFileSync } from "node:fs";
+import { ScriptedInput, idleInput } from "../src/engine/input";
 import { Game } from "../src/game/game";
-import type { StageData } from "../src/game/stageData";
-import { findStageIndex, stageLabel } from "../src/game/stageSelect";
 import { DT, VIEW_H, VIEW_W } from "../src/game/tuning";
 import { PALETTE } from "../src/art/palette";
 import { STAGES } from "../src/stages/index";
-import { applyPose, parsePreviewArgs, type PreviewArgs } from "./lib/pose";
+import { applyPose, describePlayers, parsePreviewArgs } from "./lib/pose";
 import { Canvas, RecordingRenderer, encodePng, rasterize } from "./lib/recorder";
+import { resolveStage } from "./lib/stageSpec";
 
-function idle(): PlayerInput {
-  return { left: false, right: false, jumpHeld: false, jumpPressed: false };
-}
-
-function die(message: string): never {
-  console.error(message);
-  process.exit(2);
-}
-
-let args: PreviewArgs;
-try {
-  args = parsePreviewArgs(process.argv.slice(2));
-} catch (e) {
-  die(e instanceof Error ? e.message : String(e));
-}
-
-/** ステージの指定を解決する。ラベル / id / 順番 / .json のパス。 */
-function resolveStage(spec: string): { data: StageData; label: string } {
-  if (spec.endsWith(".json")) {
-    return { data: JSON.parse(readFileSync(spec, "utf8")) as StageData, label: spec };
+/** 引数やステージ指定の誤りは、メッセージだけ出して終了コード 2。 */
+function orDie<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : String(e));
+    process.exit(2);
   }
-  const index = /^\d+$/.test(spec) ? Number(spec) - 1 : findStageIndex(STAGES, spec);
-  const data = index === null ? undefined : STAGES[index];
-  if (index === null || !data) {
-    die(`ステージ "${spec}" が見つかりません（ラベル / id / 1..${STAGES.length} / .json のパス）`);
-  }
-  return { data, label: stageLabel(STAGES, index) };
 }
 
-const { data, label } = resolveStage(args.stage);
+const args = orDie(() => parsePreviewArgs(process.argv.slice(2)));
+const { data, label } = orDie(() => resolveStage(args.stage));
 
-const input = new ScriptedInput(data.spawns.map(idle));
+const input = new ScriptedInput(data.spawns.map(idleInput));
 // select は全ワールドを並べるので、単一ステージではなく登録全体を渡す。
 // 既定はステージ全体を1枚に収める fit。follow は実際の追従カメラ。
 const game = new Game(input, args.select ? STAGES : data, {
@@ -72,11 +53,7 @@ const game = new Game(input, args.select ? STAGES : data, {
 
 if (!args.select) {
   game.start();
-  try {
-    applyPose(game, input, args.actions);
-  } catch (e) {
-    die(e instanceof Error ? e.message : String(e));
-  }
+  orDie(() => applyPose(game, input, args.actions));
 }
 // ギミックの状態（ゲートの開閉など）を落ち着かせる。選択画面では何も起きない。
 for (let i = 0; i < args.settle; i++) game.step(DT);
@@ -88,11 +65,8 @@ const canvas = new Canvas(VIEW_W * args.zoom, VIEW_H * args.zoom, PALETTE.letter
 rasterize(canvas, r.ops, args.zoom);
 
 writeFileSync(args.out, encodePng(canvas));
-const where = game.players
-  .map((p) => `p${p.index + 1}=(${(p.box.x / data.tileSize).toFixed(2)},${(p.box.y / data.tileSize).toFixed(2)})`)
-  .join(" ");
 console.log(
   args.select
     ? `${args.out} (${canvas.w}x${canvas.h}) select`
-    : `${args.out} (${canvas.w}x${canvas.h}) ${label} ${data.id} "${data.name}" phase=${game.phase} ${where}`,
+    : `${args.out} (${canvas.w}x${canvas.h}) ${label} ${data.id} "${data.name}" phase=${game.phase} ${describePlayers(game, 2)}`,
 );

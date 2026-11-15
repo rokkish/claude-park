@@ -14,6 +14,14 @@ export interface PlayerInput {
   jumpPressed: boolean;
 }
 
+/**
+ * 何も押していない入力。呼ぶたびに新しいオブジェクトを返す
+ * （ScriptedInput.endStep が jumpPressed を書き換えるので、使い回さない）。
+ */
+export function idleInput(): PlayerInput {
+  return { left: false, right: false, jumpHeld: false, jumpPressed: false };
+}
+
 export interface KeyMap {
   left: string[];
   right: string[];
@@ -77,7 +85,7 @@ export class KeyboardInput implements InputSource {
 
   sample(playerIndex: number): PlayerInput {
     const map = this.keymaps[playerIndex];
-    if (!map) return { left: false, right: false, jumpHeld: false, jumpPressed: false };
+    if (!map) return idleInput();
     const any = (codes: string[], set: Set<string>): boolean => codes.some((c) => set.has(c));
     return {
       left: any(map.left, this.held),
@@ -116,12 +124,7 @@ export class CompositeInput implements InputSource {
   constructor(private readonly sources: InputSource[]) {}
 
   sample(playerIndex: number): PlayerInput {
-    const out: PlayerInput = {
-      left: false,
-      right: false,
-      jumpHeld: false,
-      jumpPressed: false,
-    };
+    const out = idleInput();
     for (const s of this.sources) {
       const i = s.sample(playerIndex);
       out.left ||= i.left;
@@ -157,14 +160,7 @@ export class ScriptedInput implements InputSource {
   constructor(public inputs: PlayerInput[] = []) {}
 
   sample(playerIndex: number): PlayerInput {
-    return (
-      this.inputs[playerIndex] ?? {
-        left: false,
-        right: false,
-        jumpHeld: false,
-        jumpPressed: false,
-      }
-    );
+    return this.inputs[playerIndex] ?? idleInput();
   }
 
   /** 次の1ステップだけ code を押下扱いにする。 */

@@ -15,11 +15,10 @@
  *
  * error が1件でもあれば終了コード 1。検査の中身は src/game/stageCheck.ts。
  */
-import { readFileSync } from "node:fs";
-import { checkStage, formatReport } from "../src/game/stageCheck";
-import type { StageData } from "../src/game/stageData";
-import { findStageIndex, stageLabel } from "../src/game/stageSelect";
+import { checkStage, errorsOf, formatReport } from "../src/game/stageCheck";
+import { stageLabel } from "../src/game/stageSelect";
 import { STAGES } from "../src/stages/index";
+import { resolveStage } from "./lib/stageSpec";
 
 const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith("--")));
@@ -31,35 +30,23 @@ for (const f of flags) {
   }
 }
 
-interface Target {
-  label: string;
-  data: StageData;
+let targets: ReturnType<typeof resolveStage>[];
+try {
+  targets =
+    specs.length > 0
+      ? specs.map(resolveStage)
+      : STAGES.map((data, i) => ({ label: stageLabel(STAGES, i), data }));
+} catch (e) {
+  console.error(e instanceof Error ? e.message : String(e));
+  process.exit(2);
 }
-
-function resolve(spec: string): Target {
-  if (spec.endsWith(".json")) {
-    return { label: spec, data: JSON.parse(readFileSync(spec, "utf8")) as StageData };
-  }
-  const index = /^\d+$/.test(spec) ? Number(spec) - 1 : findStageIndex(STAGES, spec);
-  const data = index === null ? undefined : STAGES[index];
-  if (index === null || !data) {
-    console.error(`ステージ "${spec}" が見つかりません（ラベル / id / 1..${STAGES.length} / .json のパス）`);
-    process.exit(2);
-  }
-  return { label: stageLabel(STAGES, index), data };
-}
-
-const targets: Target[] =
-  specs.length > 0
-    ? specs.map(resolve)
-    : STAGES.map((data, i) => ({ label: stageLabel(STAGES, i), data }));
 
 const table = flags.has("--table") || (specs.length > 0 && !flags.has("--no-table"));
 let errors = 0;
 const out: string[] = [];
 for (const t of targets) {
   const report = checkStage(t.data);
-  errors += report.issues.filter((i) => i.level === "error").length;
+  errors += errorsOf(report).length;
   out.push(formatReport(t.data, report, t.label, { table, all: flags.has("--all") }));
 }
 console.log(out.join(table ? "\n\n" : "\n"));

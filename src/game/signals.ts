@@ -29,7 +29,8 @@ export class SignalBus {
 }
 
 /** 受信側が複数チャンネルをまとめる方法 (SPEC §4)。式パーサを持たずに済ませるための3択。 */
-export type SignalMode = "all" | "any" | "none";
+export const SIGNAL_MODES = ["all", "any", "none"] as const;
+export type SignalMode = (typeof SIGNAL_MODES)[number];
 
 export function evaluateSignals(
   bus: SignalBus,

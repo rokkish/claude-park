@@ -1,5 +1,7 @@
-import type { ScriptedInput } from "../../src/engine/input";
+import type { AABB } from "../../src/engine/aabb";
+import { idleInput, type ScriptedInput } from "../../src/engine/input";
 import type { Game } from "../../src/game/game";
+import type { Gimmick } from "../../src/game/gimmicks/types";
 import { DT, PLAYER_H, PLAYER_W, TILE } from "../../src/game/tuning";
 
 /**
@@ -204,57 +206,104 @@ export function parsePreviewArgs(argv: readonly string[]): PreviewArgs {
   return args;
 }
 
+// ---------------------------------------------------------------------------
+// ヘッドレスでゲームを動かす部品。tests/helpers/stage.ts も同じものを使う
+// （プレビューで見たポーズと、テストで作った配置が食い違わないように）。
+// ---------------------------------------------------------------------------
+
+type Player = Game["players"][number];
+
+/** タイル (tx, ty) に置く。小数可。dx は px のずらし。 */
+export function placeOnTile(player: Player, tx: number, ty: number, dx = 0): void {
+  player.teleport(tx * TILE + dx, ty * TILE);
+}
+
+/** 矩形の上の中央に乗せる。 */
+export function rideOnBox(player: Player, box: AABB): void {
+  player.teleport(box.x + Math.round((box.w - PLAYER_W) / 2), box.y - PLAYER_H);
+}
+
+/** type が一致する n 番目（0始まり）のギミック。無ければ、何があるかを添えて throw する。 */
+export function nthGimmick(game: Game, type: string, n = 0): Gimmick {
+  const found = game.stage.gimmicks.filter((g) => g.type === type)[n];
+  if (!found) {
+    const types = [...new Set(game.stage.gimmicks.map((g) => g.type))].join(", ");
+    throw new Error(`${type}:${n} が無い（このステージにあるのは ${types || "なし"}）`);
+  }
+  return found;
+}
+
+export interface Keys {
+  left?: boolean;
+  right?: boolean;
+  jump?: boolean;
+}
+
+/**
+ * 実際の入力で最大 steps ステップ動かし、入力を離す。until が真になったら止まる。
+ * jump は押し続け、最初のステップで踏み切る。進めたステップ数を返す。
+ */
+export function pressKeys(
+  game: Game,
+  input: ScriptedInput,
+  playerIndex: number,
+  keys: Keys,
+  steps: number,
+  until?: () => boolean,
+): number {
+  let done = 0;
+  while (done < steps) {
+    // endStep が jumpPressed を書き換えるので、毎ステップ新しく作る
+    input.inputs[playerIndex] = {
+      left: keys.left ?? false,
+      right: keys.right ?? false,
+      jumpHeld: keys.jump ?? false,
+      jumpPressed: (keys.jump ?? false) && done === 0,
+    };
+    game.step(DT);
+    done++;
+    if (until?.()) break;
+  }
+  input.inputs[playerIndex] = idleInput();
+  return done;
+}
+
+/** 「p1=(4.0,15.0) p2=...」。位置はタイル座標。 */
+export function describePlayers(game: Game, digits = 1): string {
+  const ts = game.stage.data.tileSize;
+  return game.players
+    .map((p) => `p${p.index + 1}=(${(p.box.x / ts).toFixed(digits)},${(p.box.y / ts).toFixed(digits)})`)
+    .join(" ");
+}
+
 /**
  * ポーズを実際のゲームに適用する。game.start() 済みであること。
  * 入力は渡された ScriptedInput（game に渡したのと同じもの）へ流す。
  */
 export function applyPose(game: Game, input: ScriptedInput, actions: readonly PoseAction[]): void {
-  const player = (index: number) => {
+  const player = (index: number): Player => {
     const p = game.players[index];
     if (!p) throw new Error(`p${index + 1} は居ない（このステージは ${game.players.length} 人）`);
     return p;
-  };
-  const step = (n: number): void => {
-    for (let i = 0; i < n; i++) game.step(DT);
   };
 
   for (const a of actions) {
     switch (a.kind) {
       case "place":
-        player(a.player).teleport(a.x * TILE, a.y * TILE);
+        placeOnTile(player(a.player), a.x, a.y);
         break;
       case "ride": {
         const t = a.target;
-        let box;
-        if (t.kind === "player") box = player(t.player).box;
-        else {
-          const g = game.stage.gimmicks.filter((it) => it.type === t.type)[t.index];
-          if (!g) {
-            const types = [...new Set(game.stage.gimmicks.map((it) => it.type))].join(", ");
-            throw new Error(`--ride: ${t.type}:${t.index} が無い（このステージにあるのは ${types || "なし"}）`);
-          }
-          box = g.aabb;
-        }
-        player(a.player).teleport(box.x + Math.round((box.w - PLAYER_W) / 2), box.y - PLAYER_H);
+        const box = t.kind === "player" ? player(t.player).box : nthGimmick(game, t.type, t.index).aabb;
+        rideOnBox(player(a.player), box);
         break;
       }
-      case "press": {
+      case "press":
         player(a.player);
-        for (let i = 0; i < a.steps; i++) {
-          // endStep が jumpPressed を書き換えるので、毎ステップ新しく作る
-          input.inputs[a.player] = {
-            left: a.left,
-            right: a.right,
-            jumpHeld: a.jump,
-            jumpPressed: a.jump && i === 0,
-          };
-          step(1);
-        }
-        input.inputs[a.player] = { left: false, right: false, jumpHeld: false, jumpPressed: false };
+        pressKeys(game, input, a.player, a, a.steps);
         break;
-      }
       case "hold":
-        step(a.steps);
+        for (let i = 0; i < a.steps; i++) game.step(DT);
         break;
     }
   }

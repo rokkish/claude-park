@@ -171,7 +171,7 @@ it("想定手順で2人ともゴールに到達できる", () => {
 | --- | --- |
 | `newStage(json)` | ロードして開始。`s.p1` `s.p2` `s.step(n)` `s.game` `s.input` |
 | `standOn(p, tx, ty, dx?)` | タイル座標へテレポート |
-| `rideOn(p, target, dx?)` | 矩形の上へ。`platform(s, n)` / `crate(s, n)` / 相方 |
+| `rideOn(p, target)` | 矩形の上の中央へ。`platform(s, n)` / `crate(s, n)` / 相方 |
 | `walkRight` / `walkLeft(s, p, frames, { until, jump })` | 実入力で歩く。歩いたステップ数を返す |
 | `gateClosed(s, n)` / `feet(p)` / `gimmickBox(s, type, n)` | 状態の参照 |
 | `expectCleared(s)` | 数ステップ進めて `cleared` を確認 |

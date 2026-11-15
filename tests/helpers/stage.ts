@@ -1,10 +1,17 @@
 import { expect } from "vitest";
-import type { AABB } from "../../src/engine/aabb";
-import { ScriptedInput, type PlayerInput } from "../../src/engine/input";
+import { bottom, type AABB } from "../../src/engine/aabb";
+import { ScriptedInput, idleInput } from "../../src/engine/input";
 import { Game } from "../../src/game/game";
 import type { Player } from "../../src/game/player";
 import type { StageData } from "../../src/game/stageData";
-import { DT, PLAYER_H, PLAYER_W, TILE } from "../../src/game/tuning";
+import { DT } from "../../src/game/tuning";
+import {
+  describePlayers,
+  nthGimmick,
+  placeOnTile,
+  pressKeys,
+  rideOnBox,
+} from "../../scripts/lib/pose";
 
 /**
  * ステージテストの土台。
@@ -23,9 +30,8 @@ import { DT, PLAYER_H, PLAYER_W, TILE } from "../../src/game/tuning";
  * 座標はステージ JSON と同じタイル座標（床が行16なら、立つのは行15）。
  */
 
-export function idle(): PlayerInput {
-  return { left: false, right: false, jumpHeld: false, jumpPressed: false };
-}
+/** 何も押していない入力。 */
+export const idle = idleInput;
 
 export interface StageRig {
   readonly game: Game;
@@ -61,33 +67,16 @@ export function newStage(data: unknown): StageRig {
  * タイル (tx, ty) に立たせる。ty は立つ行（床の1つ上）。
  * dx は px のずらし。2人を同じタイルの近くに並べるときに使う。
  */
-export function standOn(player: Player, tx: number, ty: number, dx = 0): void {
-  player.teleport(tx * TILE + dx, ty * TILE);
-}
+export const standOn: (player: Player, tx: number, ty: number, dx?: number) => void = placeOnTile;
 
-type Boxed = AABB | { readonly box: AABB } | { readonly aabb: AABB };
-
-function boxOf(target: Boxed): AABB {
-  if ("box" in target) return target.box;
-  if ("aabb" in target) return target.aabb;
-  return target;
-}
-
-/**
- * 矩形の上に乗せる。足場・箱・相方の頭のどれでもよい（box / aabb を持つものか、矩形そのもの）。
- * 既定では中央。dx を渡すと左端から dx px の位置。
- */
-export function rideOn(player: Player, target: Boxed, dx?: number): void {
-  const box = boxOf(target);
-  const x = box.x + (dx ?? Math.round((box.w - PLAYER_W) / 2));
-  player.teleport(x, box.y - PLAYER_H);
+/** 矩形の上の中央に乗せる。足場・箱（矩形そのもの）でも、相方（box を持つもの）でもよい。 */
+export function rideOn(player: Player, target: AABB | { readonly box: AABB }): void {
+  rideOnBox(player, "box" in target ? target.box : target);
 }
 
 /** type が一致する n 番目（0始まり）のギミックの矩形。位置は毎フレーム変わり得るので都度呼ぶ。 */
 export function gimmickBox(s: StageRig, type: string, n = 0): AABB {
-  const found = s.game.stage.gimmicks.filter((g) => g.type === type)[n];
-  if (!found) throw new Error(`${s.data.id}: ${type} の ${n} 番目が無い`);
-  return found.aabb;
+  return nthGimmick(s.game, type, n).aabb;
 }
 
 /** n 番目の足場の、いまの矩形。 */
@@ -102,14 +91,12 @@ export function crate(s: StageRig, n = 0): AABB {
 
 /** n 番目のゲートが閉じている（＝通れない）か。 */
 export function gateClosed(s: StageRig, n = 0): boolean {
-  const gate = s.game.stage.gimmicks.filter((g) => g.type === "gate")[n];
-  if (!gate) throw new Error(`${s.data.id}: gate の ${n} 番目が無い`);
-  return gate.solidAABB?.() != null;
+  return nthGimmick(s.game, "gate", n).solidAABB?.() != null;
 }
 
 /** 足元の y (px)。「床の上面に立っている」の確認に使う。 */
 export function feet(player: Player): number {
-  return player.box.y + player.box.h;
+  return bottom(player.box);
 }
 
 export interface WalkOptions {
@@ -120,23 +107,8 @@ export interface WalkOptions {
 }
 
 function walk(s: StageRig, player: Player, dir: -1 | 1, frames: number, opts: WalkOptions): number {
-  let done = 0;
-  for (; done < frames; done++) {
-    // endStep が jumpPressed を書き換えるので、毎ステップ新しく作る
-    s.input.inputs[player.index] = {
-      left: dir < 0,
-      right: dir > 0,
-      jumpHeld: opts.jump ?? false,
-      jumpPressed: (opts.jump ?? false) && done === 0,
-    };
-    s.step();
-    if (opts.until?.()) {
-      done++;
-      break;
-    }
-  }
-  s.input.inputs[player.index] = idle();
-  return done;
+  const keys = { left: dir < 0, right: dir > 0, jump: opts.jump };
+  return pressKeys(s.game, s.input, player.index, keys, frames, opts.until);
 }
 
 /**
@@ -156,14 +128,14 @@ export function walkLeft(s: StageRig, player: Player, frames: number, opts: Walk
  * クリアに至ったことを確かめる。ゴールの判定は次のステップで走るので、少し進めてから見る。
  * 落ちたときは、どこで止まっているかをメッセージに出す。
  */
-export function expectCleared(s: StageRig, settle = 10): void {
-  for (let i = 0; i < settle && s.game.phase !== "cleared"; i++) s.step();
-  const where = s.players
-    .map((p) => `p${p.index + 1}=(${(p.box.x / TILE).toFixed(1)},${(p.box.y / TILE).toFixed(1)})`)
-    .join(" ");
+export function expectCleared(s: StageRig): void {
+  for (let i = 0; i < 10 && s.game.phase !== "cleared"; i++) s.step();
   const goals = s.data.gimmicks
     .filter((g) => g.type === "goal")
     .map((g) => `goal(${g.x},${g.y}) requires=${JSON.stringify(g.requires ?? [])}`)
     .join(" ");
-  expect(s.game.phase, `${s.data.id}: クリアしていない。${where} / ${goals}`).toBe("cleared");
+  expect(
+    s.game.phase,
+    `${s.data.id}: クリアしていない。${describePlayers(s.game)} / ${goals}`,
+  ).toBe("cleared");
 }

@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ScriptedInput } from "../src/engine/input";
-import { Game } from "../src/game/game";
-import type { StageData } from "../src/game/stageData";
+import type { Game } from "../src/game/game";
 import { TILE } from "../src/game/tuning";
 import stage01 from "../src/stages/stage-01.json";
 import stage05 from "../src/stages/stage-05.json";
 import stage08 from "../src/stages/stage-08.json";
 import { applyPose, parsePreviewArgs } from "../scripts/lib/pose";
+import { feet, newStage } from "./helpers/stage";
 
 /**
  * scripts/preview-stage.ts の引数とポーズ。
@@ -15,11 +14,9 @@ import { applyPose, parsePreviewArgs } from "../scripts/lib/pose";
 
 function pose(data: unknown, argv: string[]): Game {
   const args = parsePreviewArgs(["out.png", "1", ...argv]);
-  const input = new ScriptedInput([]);
-  const game = new Game(input, data as StageData);
-  game.start();
-  applyPose(game, input, args.actions);
-  return game;
+  const s = newStage(data);
+  applyPose(s.game, s.input, args.actions);
+  return s.game;
 }
 
 describe("parsePreviewArgs", () => {
@@ -109,7 +106,7 @@ describe("applyPose", () => {
   it("--ride p2=p1 で頭の上に乗る", () => {
     const game = pose(stage01, ["--place", "p1=12,15", "--ride", "p2=p1", "--hold", "10"]);
     const [p1, p2] = game.players;
-    expect(p2!.box.y + p2!.box.h).toBe(p1!.box.y);
+    expect(feet(p2!)).toBe(p1!.box.y);
     expect(p1!.carrying).toBe(true);
   });
 
@@ -117,7 +114,7 @@ describe("applyPose", () => {
     // P1 が地上の板を踏むと足場A (platform:0) が棚の高さ (行10) まで上がる
     const game = pose(stage05, ["--place", "p1=4,15", "--ride", "p2=platform:0", "--hold", "120"]);
     const p2 = game.players[1]!;
-    expect(p2.box.y + p2.box.h).toBe(10 * TILE);
+    expect(feet(p2)).toBe(10 * TILE);
   });
 
   it("--press は実際の入力で動かす（3-2 で箱を板Aまで押す）", () => {

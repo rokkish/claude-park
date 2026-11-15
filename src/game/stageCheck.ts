@@ -1,8 +1,10 @@
+import { contains, overlaps, type AABB } from "../engine/aabb";
 import { ScriptedInput } from "../engine/input";
-import { TILE_LEGEND, Tile } from "../engine/tilegrid";
+import { Tile, type TileGrid } from "../engine/tilegrid";
 import { Game } from "./game";
 import type { GimmickParams } from "./gimmicks/types";
 import { REACH_KINDS, REACH_LABEL, measureEnvelope, type ReachKind } from "./reach";
+import { SIGNAL_MODES, type SignalMode } from "./signals";
 import type { StageData } from "./stageData";
 import { DT, PLAYER_H, PLAYER_W } from "./tuning";
 
@@ -73,12 +75,8 @@ export interface StageReport {
 // 検査
 // ---------------------------------------------------------------------------
 
-interface Rect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
+/** タイル座標の矩形。 */
+type Rect = AABB;
 
 const num = (v: unknown, fallback: number): number => (typeof v === "number" ? v : fallback);
 
@@ -94,6 +92,12 @@ function endRectOf(g: GimmickParams): Rect | null {
   return { x: to.x, y: to.y, w: num(g.w, 1), h: num(g.h, 1) };
 }
 
+/** ギミックが取り得る矩形の全て（足場は始点と終点）。 */
+function rectsOf(g: GimmickParams): Rect[] {
+  const end = endRectOf(g);
+  return end ? [rectOf(g), end] : [rectOf(g)];
+}
+
 function describe(g: GimmickParams, index: number): string {
   return `gimmicks[${index}] ${g.type}(${g.x},${g.y})`;
 }
@@ -102,40 +106,36 @@ function strings(v: unknown): string[] | null {
   return Array.isArray(v) && v.every((s) => typeof s === "string") ? (v as string[]) : null;
 }
 
-/** グリッド文字。範囲外は null。 */
-function charAt(grid: readonly string[], tx: number, ty: number): string | null {
-  return grid[ty]?.[tx] ?? null;
-}
-
-function isSolidChar(ch: string | null): boolean {
-  if (ch === null) return true;
-  const t = TILE_LEGEND[ch];
-  return t === Tile.Solid || t === Tile.Brick;
-}
-
-/** 矩形が掛かるタイルを列挙する（小数座標にも対応）。 */
-function cellsOf(r: Rect): { tx: number; ty: number }[] {
-  const out: { tx: number; ty: number }[] = [];
+/** 矩形が掛かるタイルの種類を列挙する（小数座標にも対応）。グリッド外は Solid。 */
+function tilesIn(grid: TileGrid, r: Rect): Tile[] {
+  const out: Tile[] = [];
   const EPS = 1e-9;
   for (let ty = Math.floor(r.y); ty < Math.ceil(r.y + r.h - EPS); ty++) {
-    for (let tx = Math.floor(r.x); tx < Math.ceil(r.x + r.w - EPS); tx++) out.push({ tx, ty });
+    for (let tx = Math.floor(r.x); tx < Math.ceil(r.x + r.w - EPS); tx++) out.push(grid.at(tx, ty));
   }
   return out;
 }
 
-function inRange(r: Rect, cols: number, rows: number): boolean {
+const isSolidTile = (t: Tile): boolean => t === Tile.Solid || t === Tile.Brick;
+
+function inRange(r: Rect, grid: TileGrid): boolean {
   return (
     [r.x, r.y, r.w, r.h].every(Number.isFinite) &&
     r.w > 0 &&
     r.h > 0 &&
-    r.x >= 0 &&
-    r.y >= 0 &&
-    r.x + r.w <= cols &&
-    r.y + r.h <= rows
+    contains({ x: 0, y: 0, w: grid.cols, h: grid.rows }, r)
   );
 }
 
-const SIGNAL_MODES = ["all", "any", "none"];
+/** 検査が共有するもの。 */
+interface Ctx {
+  data: StageData;
+  grid: TileGrid;
+  /** gimmicks と同じ並び。グリッド内に収まっているか（外のものは位置の検査から外す）。 */
+  placed: boolean[];
+  error(code: string, message: string): void;
+  warn(code: string, message: string): void;
+}
 
 export function checkStage(data: StageData): StageReport {
   const issues: StageIssue[] = [];
@@ -147,7 +147,7 @@ export function checkStage(data: StageData): StageReport {
   };
   const report: StageReport = { id: data.id, name: data.name, issues, surfaces: [] };
 
-  // --- ロードできるか。できなければ以降の検査は意味を持たない ---
+  // ロードできなければ以降の検査は意味を持たない
   let game: Game;
   try {
     game = new Game(new ScriptedInput([]), data);
@@ -156,78 +156,80 @@ export function checkStage(data: StageData): StageReport {
     return report;
   }
 
-  const { grid, gimmicks, spawns } = data;
-  const rows = grid.length;
-  const cols = grid[0]!.length;
-  const ts = data.tileSize;
+  const ctx: Ctx = { data, grid: game.stage.grid, placed: [], error, warn };
+  ctx.placed = checkRange(ctx);
+  checkBurial(ctx);
+  const runnable = checkWiring(ctx);
+  checkKeysAndGoals(ctx);
+  checkSpawns(ctx, game, runnable);
+  report.surfaces = findSurfaces(ctx);
+  return report;
+}
 
-  // --- ギミックがグリッド範囲内か ---
-  const placed: boolean[] = gimmicks.map((g, i) => {
+/** ギミックがグリッド範囲内か。gimmicks と同じ並びで結果を返す。 */
+function checkRange({ data, grid, error }: Ctx): boolean[] {
+  const size = `(${grid.cols}×${grid.rows})`;
+  return data.gimmicks.map((g, i) => {
     let ok = true;
-    if (!inRange(rectOf(g), cols, rows)) {
-      error("gimmick-out-of-range", `${describe(g, i)} がグリッド (${cols}×${rows}) の外にはみ出している`);
+    if (!inRange(rectOf(g), grid)) {
+      error("gimmick-out-of-range", `${describe(g, i)} がグリッド ${size} の外にはみ出している`);
       ok = false;
     }
     const end = endRectOf(g);
-    if (end && !inRange(end, cols, rows)) {
+    if (end && !inRange(end, grid)) {
       error(
         "gimmick-out-of-range",
-        `${describe(g, i)} の終点 to(${end.x},${end.y}) がグリッド (${cols}×${rows}) の外にはみ出している`,
+        `${describe(g, i)} の終点 to(${end.x},${end.y}) がグリッド ${size} の外にはみ出している`,
       );
       ok = false;
     }
     return ok;
   });
+}
 
-  // --- 地形に埋まっていないか ---
-  gimmicks.forEach((g, i) => {
-    if (!placed[i]) return;
-    const chars = (r: Rect): (string | null)[] => cellsOf(r).map((c) => charAt(grid, c.tx, c.ty));
+/** 地形に埋まっていないか、板が宙に浮いていないか。 */
+function checkBurial({ data, grid, placed, error, warn }: Ctx): void {
+  const gimmicks = data.gimmicks.map((g, i) => ({ g, i })).filter(({ i }) => placed[i]);
+
+  for (const { g, i } of gimmicks) {
     if (g.type === "platform") {
       // 足場は地形と衝突しないので動きはするが、壁の中に消えて見える
-      const end = endRectOf(g);
-      const hit = [rectOf(g), ...(end ? [end] : [])].some((r) => chars(r).some(isSolidChar));
-      if (hit) warn("platform-in-terrain", `${describe(g, i)} の始点か終点が地形に重なっている`);
-      return;
+      if (rectsOf(g).some((r) => tilesIn(grid, r).some(isSolidTile))) {
+        warn("platform-in-terrain", `${describe(g, i)} の始点か終点が地形に重なっている`);
+      }
+      continue;
     }
-    const cs = chars(rectOf(g));
-    if (cs.some((ch) => ch !== null && TILE_LEGEND[ch] === Tile.Solid)) {
+    const tiles = tilesIn(grid, rectOf(g));
+    if (tiles.includes(Tile.Solid)) {
       error("buried", `${describe(g, i)} が壁 (#) に埋まっている`);
-    } else if (cs.some((ch) => ch !== null && TILE_LEGEND[ch] === Tile.Brick)) {
+    } else if (tiles.includes(Tile.Brick)) {
       warn("in-brick", `${describe(g, i)} がブロック (B) に重なっている（壊すまで触れない）`);
     }
-  });
+  }
 
-  // --- 板が宙に浮いていないか（下に床もギミックも無い） ---
-  const solidRects: Rect[] = [];
-  gimmicks.forEach((g, i) => {
-    if (!placed[i]) return;
-    if (g.type === "gate" || g.type === "crate") solidRects.push(rectOf(g));
-    if (g.type === "platform") {
-      solidRects.push(rectOf(g));
-      const end = endRectOf(g);
-      if (end) solidRects.push(end);
-    }
-  });
-  gimmicks.forEach((g, i) => {
-    if (g.type !== "plate" || !placed[i]) return;
+  // 板の下に、床も、乗れるギミックも無い
+  const solids = gimmicks
+    .filter(({ g }) => ["gate", "crate", "platform"].includes(g.type))
+    .flatMap(({ g }) => rectsOf(g));
+  for (const { g, i } of gimmicks) {
+    if (g.type !== "plate") continue;
     const r = rectOf(g);
-    const below = r.y + r.h;
-    const onTerrain = cellsOf({ x: r.x, y: below, w: r.w, h: 1 }).some((c) =>
-      isSolidChar(charAt(grid, c.tx, c.ty)),
-    );
-    const onGimmick = solidRects.some(
-      (s) => s.y < below + 1 && s.y + s.h > below && s.x < r.x + r.w && s.x + s.w > r.x,
-    );
-    if (!onTerrain && !onGimmick) {
+    const below: Rect = { x: r.x, y: r.y + r.h, w: r.w, h: 1 };
+    if (!tilesIn(grid, below).some(isSolidTile) && !solids.some((s) => overlaps(s, below))) {
       warn("plate-floating", `${describe(g, i)} の下に床が無い（踏めるのは落下中の一瞬だけ）`);
     }
-  });
+  }
+}
 
-  // --- 配線: listen しているチャンネルを誰かが emit しているか ---
+/**
+ * 配線: listen しているチャンネルを誰かが emit しているか。
+ * 戻り値は「実際に動かしても落ちないか」（listen の型が違うと update で例外になる）。
+ */
+function checkWiring({ data, error, warn }: Ctx): boolean {
   const emitted = new Set<string>();
   const listened = new Set<string>();
-  gimmicks.forEach((g, i) => {
+  let runnable = true;
+  data.gimmicks.forEach((g, i) => {
     if (g.type === "plate" && typeof g.emit !== "string") {
       error("plate-without-emit", `${describe(g, i)} に emit が無い`);
     }
@@ -235,14 +237,18 @@ export function checkStage(data: StageData): StageReport {
 
     if (g.type === "gate" && g.listen === undefined) {
       error("gate-without-listen", `${describe(g, i)} に listen が無い`);
+      runnable = false;
     }
     if (g.listen !== undefined) {
       const names = strings(g.listen);
-      if (!names) error("bad-listen", `${describe(g, i)} の listen は文字列の配列で書く`);
-      else for (const n of names) listened.add(n);
+      if (names) for (const n of names) listened.add(n);
+      else {
+        error("bad-listen", `${describe(g, i)} の listen は文字列の配列で書く`);
+        runnable = false;
+      }
     }
-    if (g.mode !== undefined && !SIGNAL_MODES.includes(g.mode as string)) {
-      error("bad-mode", `${describe(g, i)} の mode "${String(g.mode)}" は all / any / none のどれでもない`);
+    if (g.mode !== undefined && !SIGNAL_MODES.includes(g.mode as SignalMode)) {
+      error("bad-mode", `${describe(g, i)} の mode "${String(g.mode)}" は ${SIGNAL_MODES.join(" / ")} のどれでもない`);
     }
   });
   for (const ch of listened) {
@@ -256,20 +262,24 @@ export function checkStage(data: StageData): StageReport {
   for (const ch of emitted) {
     if (!listened.has(ch)) warn("emit-without-listen", `チャンネル "${ch}" を emit しているが、誰も listen していない`);
   }
+  return runnable;
+}
 
-  // --- 鍵とゴール ---
+function checkKeysAndGoals({ data, error, warn }: Ctx): void {
+  const { gimmicks } = data;
   const keyIds: string[] = [];
   gimmicks.forEach((g, i) => {
     if (g.type !== "key") return;
     if (typeof g.id !== "string") error("key-without-id", `${describe(g, i)} に id が無い`);
     else keyIds.push(g.id);
   });
-  for (const id of new Set(keyIds)) {
-    if (keyIds.filter((k) => k === id).length > 1) warn("key-duplicate", `鍵の id "${id}" が重複している`);
+  const unique = new Set(keyIds);
+  for (const id of unique) {
+    if (keyIds.indexOf(id) !== keyIds.lastIndexOf(id)) warn("key-duplicate", `鍵の id "${id}" が重複している`);
   }
+
+  if (!gimmicks.some((g) => g.type === "goal")) error("no-goal", "goal が1つも無い（クリアできない）");
   const required = new Set<string>();
-  const goals = gimmicks.filter((g) => g.type === "goal");
-  if (goals.length === 0) error("no-goal", "goal が1つも無い（クリアできない）");
   gimmicks.forEach((g, i) => {
     if (g.type !== "goal" || g.requires === undefined) return;
     const ids = strings(g.requires);
@@ -279,7 +289,7 @@ export function checkStage(data: StageData): StageReport {
     }
     for (const id of ids) {
       required.add(id);
-      if (!keyIds.includes(id)) {
+      if (!unique.has(id)) {
         error(
           "requires-missing-key",
           `${describe(g, i)} が鍵 "${id}" を要求しているが、その id の key が無い（key: ${keyIds.join(", ") || "なし"}）`,
@@ -287,81 +297,71 @@ export function checkStage(data: StageData): StageReport {
       }
     }
   });
-  for (const id of new Set(keyIds)) {
+  for (const id of unique) {
     if (!required.has(id)) warn("key-unused", `鍵 "${id}" はどの goal にも要求されていない`);
   }
+}
 
-  // --- スポーン ---
+function checkSpawns({ data, grid, error }: Ctx, game: Game, runnable: boolean): void {
+  const { spawns } = data;
+  const ts = data.tileSize;
+  const size = `(${grid.cols}×${grid.rows})`;
+  let staticOk = spawns.length > 0;
   if (spawns.length === 0) error("no-spawn", "spawns が空");
-  let spawnsOk = spawns.length > 0;
-  spawns.forEach((s, i) => {
-    const name = `spawns[${i}] (${s.x},${s.y})`;
-    // 当たり判定は 20×24px。タイルの左上に置かれる。
-    const box: Rect = { x: s.x, y: s.y, w: PLAYER_W / ts, h: PLAYER_H / ts };
-    if (!inRange(box, cols, rows)) {
-      error("spawn-out-of-range", `${name} がグリッド (${cols}×${rows}) の外`);
-      spawnsOk = false;
-    } else if (cellsOf(box).some((c) => isSolidChar(charAt(grid, c.tx, c.ty)))) {
-      error("spawn-in-wall", `${name} が地形に埋まっている`);
-      spawnsOk = false;
+
+  // 当たり判定は 20×24px。タイルの左上に置かれる。
+  const boxes: Rect[] = spawns.map((s) => ({ x: s.x, y: s.y, w: PLAYER_W / ts, h: PLAYER_H / ts }));
+  const name = (i: number): string => `spawns[${i}] (${spawns[i]!.x},${spawns[i]!.y})`;
+  boxes.forEach((box, i) => {
+    if (!inRange(box, grid)) {
+      error("spawn-out-of-range", `${name(i)} がグリッド ${size} の外`);
+      staticOk = false;
+    } else if (tilesIn(grid, box).some(isSolidTile)) {
+      error("spawn-in-wall", `${name(i)} が地形に埋まっている`);
+      staticOk = false;
     }
     for (let j = 0; j < i; j++) {
-      const o = spawns[j]!;
-      if (Math.abs(o.x - s.x) * ts < PLAYER_W && Math.abs(o.y - s.y) * ts < PLAYER_H) {
-        error("spawn-overlap", `${name} が spawns[${j}] (${o.x},${o.y}) と重なっている`);
-        spawnsOk = false;
+      if (overlaps(boxes[j]!, box)) {
+        error("spawn-overlap", `${name(i)} が ${name(j)} と重なっている`);
+        staticOk = false;
       }
     }
   });
+  if (!staticOk || !runnable) return;
+
   // 床の上かどうかは実際に動かして確かめる。地形だけでなく、足場や箱の上に
   // 立たせる配置も同じ基準（動かなければ床の上）で判定できる。
-  if (spawnsOk) {
-    game.start();
-    const before = game.players.map((p) => ({ x: p.box.x, y: p.box.y }));
-    try {
-      for (let i = 0; i < 3; i++) game.step(DT);
-    } catch (e) {
-      // 配線の型違いなどで実行時に落ちる。原因は上の検査が既に報告している。
-      error("run", `開始直後に例外: ${e instanceof Error ? e.message : String(e)}`);
-      report.surfaces = findSurfaces(data, placed);
-      return report;
+  game.start();
+  const startY = game.players.map((p) => p.box.y);
+  for (let i = 0; i < 3; i++) game.step(DT);
+  game.players.forEach((p, i) => {
+    if (p.box.y !== startY[i] || !p.grounded) {
+      error(
+        "spawn-not-on-floor",
+        `${name(i)} は床の上に無い（開始直後に y=${startY[i]} から ${p.box.y} へ動く。床の1つ上の行を指定する）`,
+      );
     }
-    game.players.forEach((p, i) => {
-      const s = spawns[i]!;
-      const b = before[i]!;
-      if (p.box.y !== b.y || !p.grounded) {
-        error(
-          "spawn-not-on-floor",
-          `spawns[${i}] (${s.x},${s.y}) は床の上に無い（開始直後に y=${b.y} から ${p.box.y} へ動く。床の1つ上の行を指定する）`,
-        );
-      }
-    });
-  }
-
-  report.surfaces = findSurfaces(data, placed);
-  return report;
+  });
 }
 
 // ---------------------------------------------------------------------------
 // 面と到達力の突き合わせ
 // ---------------------------------------------------------------------------
 
-function findSurfaces(data: StageData, placed: readonly boolean[]): Surface[] {
-  const { grid } = data;
+function findSurfaces({ data, grid, placed }: Ctx): Surface[] {
   const ts = data.tileSize;
-  const cols = grid[0]!.length;
   const out: Surface[] = [];
 
   // 地形: 上が空いている Solid タイルの横並び。壁とブロックは分けて数える
   // （ブロックは壊れると面でなくなる）。グリッドの外は Solid 扱いなので、
   // 最下行が空いている列（穴）はグリッドの下端が底になる。それも面として数える。
   let n = 0;
-  for (let ty = 1; ty <= grid.length; ty++) {
+  for (let ty = 1; ty <= grid.rows; ty++) {
     let run: { kind: "terrain" | "brick"; start: number } | null = null;
-    for (let tx = 0; tx <= cols; tx++) {
-      const ch = tx < cols ? charAt(grid, tx, ty) : null;
-      const standable = tx < cols && isSolidChar(ch) && !isSolidChar(charAt(grid, tx, ty - 1));
-      const kind = ch !== null && TILE_LEGEND[ch] === Tile.Brick ? "brick" : "terrain";
+    for (let tx = 0; tx <= grid.cols; tx++) {
+      const tile = grid.at(tx, ty);
+      const standable = tx < grid.cols && isSolidTile(tile) && !grid.isSolid(tx, ty - 1);
+      const kind = tile === Tile.Brick ? "brick" : "terrain";
       if (run && (!standable || kind !== run.kind)) {
         out.push({
           id: `${run.kind === "brick" ? "B" : "T"}${++n}`,
@@ -369,7 +369,7 @@ function findSurfaces(data: StageData, placed: readonly boolean[]): Surface[] {
           y: ty * ts,
           x0: run.start * ts,
           x1: tx * ts,
-          note: run.kind === "brick" ? "壊せる" : ty === grid.length ? "穴の底（グリッド下端）" : "",
+          note: run.kind === "brick" ? "壊せる" : ty === grid.rows ? "穴の底（グリッド下端）" : "",
         });
         run = null;
       }
@@ -433,9 +433,11 @@ export function reachTable(data: StageData, surfaces: readonly Surface[]): Trans
       const gap = Math.max(0, to.x0 - from.x1, from.x0 - to.x1);
       // 登り先に完全に覆われている面からは、跳んでも頭を打つだけ
       const under = rise > 0 && from.x0 >= to.x0 && from.x1 <= to.x1;
-      const verdicts = Object.fromEntries(
-        REACH_KINDS.map((k) => [k, judge(k, rise, gap, under)]),
-      ) as Record<ReachKind, Verdict>;
+      const verdicts = {
+        solo: judge("solo", rise, gap, under),
+        boost: judge("boost", rise, gap, under),
+        double: judge("double", rise, gap, under),
+      };
       const withCrate = crateH > 0 ? judge("double", rise - crateH, gap, under) : null;
       out.push({ from, to, rise, gap, verdicts, withCrate });
     }
@@ -455,9 +457,8 @@ function pad(s: string, width: number): string {
 }
 
 function cell(v: Verdict): string {
-  if (v.ok) return `○ ${v.axis === "rise" ? "高" : "幅"}+${v.px}`;
   if (v.axis === "under") return "× 真下";
-  return `× ${v.axis === "rise" ? "高" : "幅"}-${v.px}`;
+  return `${v.ok ? "○" : "×"} ${v.axis === "rise" ? "高" : "幅"}${v.ok ? "+" : "-"}${v.px}`;
 }
 
 const KIND_LABEL: Record<Surface["kind"], string> = {
@@ -473,8 +474,14 @@ export interface FormatOptions {
   table?: boolean;
   /** どの跳び方でも大きく届かない組も表に出す。 */
   all?: boolean;
-  /** 「大きく届かない」の境目 (px)。不足がこれを超える組は省く。 */
-  nearMiss?: number;
+}
+
+/** 「大きく届かない」の境目 (px)。不足がこれを超える組は、既定では表から省く。 */
+const NEAR_MISS_PX = 48;
+
+/** error だけを取り出す。 */
+export function errorsOf(report: StageReport): StageIssue[] {
+  return report.issues.filter((i) => i.level === "error");
 }
 
 export function formatReport(
@@ -484,7 +491,7 @@ export function formatReport(
   opts: FormatOptions = {},
 ): string {
   const lines: string[] = [];
-  const errors = report.issues.filter((i) => i.level === "error");
+  const errors = errorsOf(report);
   const warnings = report.issues.filter((i) => i.level === "warning");
   const status = errors.length > 0 ? "NG" : warnings.length > 0 ? "OK (警告あり)" : "OK";
   lines.push(`${label} ${report.id} "${report.name}": ${status}`);
@@ -502,7 +509,6 @@ export function formatReport(
     );
   }
 
-  const nearMiss = opts.nearMiss ?? 48;
   const table = reachTable(data, report.surfaces);
   const all = (t: Transition): Verdict[] => [
     ...Object.values(t.verdicts),
@@ -514,7 +520,7 @@ export function formatReport(
   const shown = table.filter(
     (t) =>
       !trivial(t) &&
-      (opts.all || all(t).some((v) => v.ok || (v.axis !== "under" && v.px <= nearMiss))),
+      (opts.all || all(t).some((v) => v.ok || (v.axis !== "under" && v.px <= NEAR_MISS_PX))),
   );
   const hasCrate = table.some((t) => t.withCrate);
   lines.push(
@@ -536,7 +542,7 @@ export function formatReport(
   }
   const hidden = table.length - shown.length - drops.length;
   if (hidden > 0) {
-    lines.push(`    （ほか ${hidden} 組は、どの跳び方でも ${nearMiss}px を超えて届かないので省略。--all で表示）`);
+    lines.push(`    （ほか ${hidden} 組は、どの跳び方でも ${NEAR_MISS_PX}px を超えて届かないので省略。--all で表示）`);
   }
   lines.push(
     "    ○ は到達力の範囲内（上限。天井・壁・助走・2人が並べるかは見ていない）。× は届かない。",

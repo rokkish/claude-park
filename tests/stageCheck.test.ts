@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkStage, formatReport, reachTable, type StageIssue } from "../src/game/stageCheck";
+import { checkStage, errorsOf, formatReport, reachTable } from "../src/game/stageCheck";
 import type { StageData } from "../src/game/stageData";
 import { stageLabel } from "../src/game/stageSelect";
 import { STAGES } from "../src/stages/index";
@@ -14,8 +14,6 @@ import stage07 from "../src/stages/stage-07.json";
 // 到達力の実測（総当たり）を1回挟むので、既定の 5 秒では足りないことがある
 const SLOW = 60_000;
 
-const errorsOf = (issues: StageIssue[]): string[] =>
-  issues.filter((i) => i.level === "error").map((i) => `[${i.code}] ${i.message}`);
 const codes = (data: StageData): string[] => checkStage(data).issues.map((i) => i.code);
 
 /** 1-1 を元に、一部だけ壊したステージを作る。 */
@@ -29,7 +27,7 @@ describe("登録済みの全ステージが検査を通る", () => {
   it.each(STAGES.map((s, i) => [stageLabel(STAGES, i), s] as const))(
     "%s に error が無い",
     (_label, data) => {
-      expect(errorsOf(checkStage(data).issues)).toEqual([]);
+      expect(errorsOf(checkStage(data)).map((i) => `[${i.code}] ${i.message}`)).toEqual([]);
     },
   );
 
