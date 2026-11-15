@@ -3,109 +3,96 @@
  * 実際の Game.render() をそのまま走らせるので、タイル・ギミック・Clawd の
  * 配置と配色を、ブラウザを開かずに確認できる。
  *
- *   npx vite-node scripts/preview-stage.ts out.png [stage] [pose] [touch]
+ *   npx vite-node scripts/preview-stage.ts out.png [stage] [options]
  *
- * stage: 1..N（既定 1）
- * pose:
- *   start   スポーン直後（全ステージ共通・既定）
- *   select  ワールド選択画面
- *   1-1: boost  P1 の頭に P2 が乗った状態
- *        open   P2 が感圧板を踏み、ゲートが開いた状態
- *        clear  鍵を取って2人がゴールに入った状態
- *   1-2: both   2枚の板を同時に踏み、ゲートがラッチで開いた状態
- *   1-3: bridge 板を踏んで橋が架かった状態
+ * ポーズ（誰をどこに置き、何ステップ進めるか）は引数で指定する。ステージを
+ * 足してもこのスクリプトを編集する必要は無い。
+ *
+ *   # スポーン直後
+ *   npx vite-node scripts/preview-stage.ts out.png 2-4
+ *   # P1 の頭に P2 が乗った状態
+ *   npx vite-node scripts/preview-stage.ts out.png 1-1 --place p1=12,15 --ride p2=p1
+ *   # 板を踏み続け、足場が動き終わるまで待った状態
+ *   npx vite-node scripts/preview-stage.ts out.png 2-4 --place p1=2.33,15 --place p2=9,14 --hold 150
+ *   # 未登録の JSON
+ *   npx vite-node scripts/preview-stage.ts out.png src/stages/stage-16.json
+ *
+ * オプションは必ず out.png より後ろに書く（前に書くと vite-node が自分の
+ * オプションとして解釈する）。全オプションは `--help` か scripts/lib/pose.ts の USAGE。
  */
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { ScriptedInput, type PlayerInput } from "../src/engine/input";
 import { Game } from "../src/game/game";
-import { DT, TILE, VIEW_H, VIEW_W } from "../src/game/tuning";
+import type { StageData } from "../src/game/stageData";
+import { findStageIndex, stageLabel } from "../src/game/stageSelect";
+import { DT, VIEW_H, VIEW_W } from "../src/game/tuning";
 import { PALETTE } from "../src/art/palette";
 import { STAGES } from "../src/stages/index";
+import { applyPose, parsePreviewArgs, type PreviewArgs } from "./lib/pose";
 import { Canvas, RecordingRenderer, encodePng, rasterize } from "./lib/recorder";
-
-const ZOOM = 2;
 
 function idle(): PlayerInput {
   return { left: false, right: false, jumpHeld: false, jumpPressed: false };
 }
 
-const out = process.argv[2] ?? "stage-preview.png";
-const stageNo = Number(process.argv[3] ?? 1);
-const pose = process.argv[4] ?? "start";
-const touchMode = process.argv[5] === "touch";
-
-const data = STAGES[stageNo - 1];
-if (!data) throw new Error(`ステージ ${stageNo} は存在しません (1..${STAGES.length})`);
-
-const input = new ScriptedInput([idle(), idle()]);
-// select は全ワールドを並べるので、単一ステージではなく登録全体を渡す。
-// ステージ全体を1枚に収めたいので、追従カメラではなく全体表示にする。
-const game = new Game(input, pose === "select" ? STAGES : data, { touchMode, camera: "fit" });
-// pose=select のときだけワールド選択画面のまま焼く
-if (pose !== "select") game.start();
-
-const step = (n: number): void => {
-  for (let i = 0; i < n; i++) game.step(DT);
-};
-const [p1, p2] = game.players;
-
-switch (pose) {
-  // --- 1-1 Boost & Hold ---
-  case "boost":
-    p1!.teleport(12 * TILE, 15 * TILE);
-    p2!.teleport(12 * TILE, 14 * TILE);
-    break;
-  case "open":
-    p1!.teleport(10 * TILE, 15 * TILE);
-    p2!.teleport(15 * TILE, 12 * TILE);
-    break;
-  case "clear":
-    p1!.teleport(25 * TILE, 15 * TILE); // 鍵の上
-    step(5);
-    p1!.teleport(35 * TILE, 15 * TILE);
-    p2!.teleport(35 * TILE + 30, 15 * TILE);
-    break;
-
-  // --- 1-2 Both at Once: 2枚同時 ---
-  case "both":
-    p1!.teleport(4 * TILE, 15 * TILE); // 地上の板A
-    p2!.teleport(19 * TILE, 12 * TILE); // 棚の上の板B
-    break;
-
-  // --- 1-3 Bridge: 踏むと橋が架かる ---
-  case "bridge":
-    p1!.teleport(12 * TILE, 12 * TILE); // 手前の板
-    p2!.teleport(16 * TILE, 12 * TILE); // 渡ろうとしている側
-    break;
-
-  // --- 2-4 Tower: 中段で A から B へ乗り継ぐ瞬間 ---
-  case "transfer":
-    p1!.teleport(2 * TILE + 8, 15 * TILE); // 地上の板を踏み続ける
-    p2!.teleport(9 * TILE, 14 * TILE); // 足場Aの上
-    step(150); // A が中段へ、B が中段へ降りてくるまで
-    break;
-
-  // --- 2-4 Tower: 上の板を踏み、島に取り残されている状態 ---
-  case "island":
-    p1!.teleport(9 * TILE, 14 * TILE); // 足場Aの上（下から呼ばれて上がる側）
-    p2!.teleport(8 * TILE + 8, 3 * TILE); // 島の板
-    step(150);
-    break;
-
-  default:
-    break;
+function die(message: string): never {
+  console.error(message);
+  process.exit(2);
 }
 
-// ギミックの状態（ゲートの開閉など）を落ち着かせる
-step(10);
+let args: PreviewArgs;
+try {
+  args = parsePreviewArgs(process.argv.slice(2));
+} catch (e) {
+  die(e instanceof Error ? e.message : String(e));
+}
+
+/** ステージの指定を解決する。ラベル / id / 順番 / .json のパス。 */
+function resolveStage(spec: string): { data: StageData; label: string } {
+  if (spec.endsWith(".json")) {
+    return { data: JSON.parse(readFileSync(spec, "utf8")) as StageData, label: spec };
+  }
+  const index = /^\d+$/.test(spec) ? Number(spec) - 1 : findStageIndex(STAGES, spec);
+  const data = index === null ? undefined : STAGES[index];
+  if (index === null || !data) {
+    die(`ステージ "${spec}" が見つかりません（ラベル / id / 1..${STAGES.length} / .json のパス）`);
+  }
+  return { data, label: stageLabel(STAGES, index) };
+}
+
+const { data, label } = resolveStage(args.stage);
+
+const input = new ScriptedInput(data.spawns.map(idle));
+// select は全ワールドを並べるので、単一ステージではなく登録全体を渡す。
+// 既定はステージ全体を1枚に収める fit。follow は実際の追従カメラ。
+const game = new Game(input, args.select ? STAGES : data, {
+  touchMode: args.touch,
+  camera: args.camera,
+});
+
+if (!args.select) {
+  game.start();
+  try {
+    applyPose(game, input, args.actions);
+  } catch (e) {
+    die(e instanceof Error ? e.message : String(e));
+  }
+}
+// ギミックの状態（ゲートの開閉など）を落ち着かせる。選択画面では何も起きない。
+for (let i = 0; i < args.settle; i++) game.step(DT);
 
 const r = new RecordingRenderer(VIEW_W, VIEW_H);
 game.render(r);
 
-const canvas = new Canvas(VIEW_W * ZOOM, VIEW_H * ZOOM, PALETTE.letterbox);
-rasterize(canvas, r.ops, ZOOM);
+const canvas = new Canvas(VIEW_W * args.zoom, VIEW_H * args.zoom, PALETTE.letterbox);
+rasterize(canvas, r.ops, args.zoom);
 
-writeFileSync(out, encodePng(canvas));
+writeFileSync(args.out, encodePng(canvas));
+const where = game.players
+  .map((p) => `p${p.index + 1}=(${(p.box.x / data.tileSize).toFixed(2)},${(p.box.y / data.tileSize).toFixed(2)})`)
+  .join(" ");
 console.log(
-  `${out} (${canvas.w}x${canvas.h}) stage=${stageNo} "${data.name}" pose=${pose} phase=${game.phase} solids=${game.stage.solids().length}`,
+  args.select
+    ? `${args.out} (${canvas.w}x${canvas.h}) select`
+    : `${args.out} (${canvas.w}x${canvas.h}) ${label} ${data.id} "${data.name}" phase=${game.phase} ${where}`,
 );

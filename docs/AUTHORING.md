@@ -1,7 +1,7 @@
 # ステージの作り方
 
 既存ギミックの組み合わせだけなら、**コードは1行も書きません**（JSON 1つ + 登録2行）。
-設計の背景は [SPEC.md](SPEC.md) §7、ツール化の予定は [TODO.md](TODO.md) を参照してください。
+設計の背景は [SPEC.md](SPEC.md) §7、残っている課題は [TODO.md](TODO.md) を参照してください。
 
 ## 0. 座標系
 
@@ -68,28 +68,67 @@ npm run dev          # http://localhost:5173/?stage=stage-12
 
 `?stage=` にはラベル（`2-4`）でも id（`stage-12`）でも渡せます。選択画面を飛ばして直接始まります。
 
-ブラウザを開かずに絵だけ見たい場合:
+ブラウザを開かずに絵だけ見たい場合（ポーズは引数で指定します。スクリプトの編集は不要）:
 
 ```bash
-npx vite-node scripts/preview-stage.ts out.png <配列での順番> start
+# スポーン直後
+npx vite-node scripts/preview-stage.ts out.png 2-4
+# 板を踏み続け、足場が動き終わった状態
+npx vite-node scripts/preview-stage.ts out.png 2-4 --place p1=2.33,15 --place p2=9,14 --hold 150
+# 相方の頭に乗せる / 足場に乗せる / 実際の入力で箱を押す
+npx vite-node scripts/preview-stage.ts out.png 1-1 --place p1=12,15 --ride p2=p1
+npx vite-node scripts/preview-stage.ts out.png 2-2 --place p1=4,15 --ride p2=platform:1 --hold 120
+npx vite-node scripts/preview-stage.ts out.png 3-2 --place p1=11,15 --press p1=left:240
+# 登録前の JSON
+npx vite-node scripts/preview-stage.ts out.png src/stages/stage-16.json
 ```
+
+ステージはラベル（`2-4`）・id（`stage-11`）・配列での順番・`.json` のパスで指定します。
+ポーズは書いた順に実行されます。全オプションは `--help`。
 
 ## 5. 検算する
 
-**この数値がステージ成立の根拠です。** `src/game/tuning.ts` の `JUMP_VELOCITY` / `GRAVITY` から
-決まっているので、そちらを変えたらここも再計算が要ります。
+まず機械検査を通します。スポーンが床の上か、ギミックがグリッド内か、`emit` / `listen` の
+書き間違い、`goal.requires` の鍵の有無、板・ゲートの地形への埋まりを見ます。
 
-| 手段 | 到達高 | 水平到達 |
+```bash
+npx vite-node scripts/check-stage.ts                          # 登録済みの全ステージ
+npx vite-node scripts/check-stage.ts 2-4                      # 1ステージ。面どうしの到達表も出る
+npx vite-node scripts/check-stage.ts src/stages/stage-16.json # 登録前の JSON
+```
+
+ステージを指定すると、**立てる面どうしの高さ・幅を到達力と突き合わせた表**が出ます。
+「単独では届かず2人なら届く」「この谷は越えられない」といった成立条件は、手で計算せず
+この表で確認してください。`×` は「どう操作しても届かない」（設計の根拠にしてよい）、
+`○` は「到達力の範囲内」（上限。天井・壁・助走・2人が並べるかは見ていない）です。
+同じ検査は `tests/stageCheck.test.ts` が登録済みの全ステージに掛けます。
+
+### 到達力
+
+**この数値がステージ成立の根拠です。** 一次ソースは `src/game/reach.ts` の `REACH` で、
+`tests/reach.test.ts` が実際の物理を走らせた実測と一致することを固定しています
+（`tuning.ts` や物理を変えるとテストが落ちます）。
+
+| 手段 | 登れる高さ | 同じ高さへ越えられる隙間 |
 | --- | --- | --- |
-| 単独ジャンプ | 62.5px（2.6タイル） | 約87px |
-| 相方の頭に乗ってから | 86.5px（3.6タイル） | — |
-| 箱＋頭に乗って | 110.5px | — |
-| **二段ジャンプ**（頭に乗り、下の頂点で上が跳ぶ） | **149px** | 約102px |
+| 単独ジャンプ | 58px（2タイルは可、3タイルは不可） | 106px（4タイルまで） |
+| ブースト（相方の頭から。相方は跳ばない） | 82px（3タイルまで） | 139px（5タイルまで） |
+| **二段ジャンプ**（頭に乗り、相方が跳んでいる間に跳ぶ） | **140px**（5タイルまで） | **206px**（8タイルまで） |
+| 箱の上から / 箱＋ブースト / 箱＋二段 | 82 / 106 / 164px | — |
+
+- SPEC の検算表にある 62.5 / 86.5 / 110.5 / 149px は式から出した解析値で、実測より少し高い
+  （固定ステップ積分と整数 px のため）。**高さの「届かない」は解析値で見積もっても安全側**です。
+- **隙間は逆で、解析値（約87px / 約102px）は実際より短い。** 崖際のコヨーテタイムと当たり判定の
+  幅で単独でも 106px 届き、2人なら上の人が土台に運ばれたまま跳べるのでさらに伸びます。
+  隙間で縛るときは必ず上の表（か `check-stage` の表）と比べてください。
+- ブースト／二段の隙間は、**土台が隙間へ走り込む（＝土台は落ちる）** 操作での値です。
+  渡れるのは1人だけですが、渡った先で板を踏める配置は破られます。
+- 降りる向きは落ちるぶん遠くへ届きます（`check-stage` の表は高低差込みで判定します）。
 
 ### 落とし穴
 
-- **高さで縛れるのは「そこに2人並べない」ときだけ。** 並べる場所なら 149px を超えさせるか、
-  水平距離（102px 超）で縛ってください。3-2 と 3-3 はこれで2度作り直しています。
+- **高さで縛れるのは「そこに2人並べない」ときだけ。** 並べる場所なら 140px を超えさせる
+  （6タイル以上）か、水平距離（206px 超＝9タイル以上）で縛ってください。3-2 と 3-3 はこれで2度作り直しています。
   2-4 は「足場が留まるのは板を踏んでいる間だけ＝1人しか居られない」を根拠に、
   中段より上を 72px で縛っています。
 - **横方向の当たりは「押し合い」です。** 板を人の通り道に置くと、通る人が押さえ役を
@@ -110,12 +149,32 @@ npx vite-node scripts/preview-stage.ts out.png <配列での順番> start
 `tests/stageNN.test.ts` を作ります。**「想定手順を通しで踏んで `cleared` に至るテスト」は必須**です。
 2-2 で「部品ごとのテストは全部通るのに、盤面としては詰んでいる」を一度出荷しています。
 
+土台は `tests/helpers/stage.ts` にあります（使用例: `tests/stage05.test.ts`、`tests/stage08.test.ts`、
+実際の入力だけで 1-1 を通す例は `tests/helpers.test.ts`）。
+
 ```ts
+import stage12 from "../src/stages/stage-12.json";
+import { expectCleared, newStage, platform, rideOn, standOn, walkRight } from "./helpers/stage";
+
 it("想定手順で2人ともゴールに到達できる", () => {
-  // ...テレポートで配置し、実際にシミュレーションを回す
-  expect(game.phase).toBe("cleared");
+  const s = newStage(stage12);
+  standOn(s.p1, 4, 15);            // タイル座標に立たせる（床の1つ上の行）
+  s.step(120);                     // 足場が動き終わるまで待つ
+  rideOn(s.p2, platform(s, 1));    // 足場・箱・相方の頭に乗せる
+  walkRight(s, s.p1, 240);         // 実際の入力で歩かせる（壁・ゲート・押し合いが効く）
+  // ...
+  expectCleared(s);                // 落ちたら2人の位置とゴールの条件が出る
 });
 ```
+
+| ヘルパ | 用途 |
+| --- | --- |
+| `newStage(json)` | ロードして開始。`s.p1` `s.p2` `s.step(n)` `s.game` `s.input` |
+| `standOn(p, tx, ty, dx?)` | タイル座標へテレポート |
+| `rideOn(p, target, dx?)` | 矩形の上へ。`platform(s, n)` / `crate(s, n)` / 相方 |
+| `walkRight` / `walkLeft(s, p, frames, { until, jump })` | 実入力で歩く。歩いたステップ数を返す |
+| `gateClosed(s, n)` / `feet(p)` / `gimmickBox(s, type, n)` | 状態の参照 |
+| `expectCleared(s)` | 数ステップ進めて `cleared` を確認 |
 
 加えて `tests/progression.test.ts` の `CLEAR_SETUP` に1行足してください
 （**未定義だとテストが落ちます**。ゴールと鍵のタイル座標を書くだけです）。
@@ -124,4 +183,5 @@ it("想定手順で2人ともゴールに到達できる", () => {
 "stage-12": { goal: { x: 30, y: 3 }, key: { x: 12, y: 6 }, key2: { x: 10, y: 3 } },
 ```
 
-最後に `npm test` と `npm run build`（型検査込み）を通します。
+最後に `npm test` と `npm run build`（型検査込み）を通します。機械検査（§5）は
+`tests/stageCheck.test.ts` が登録済みの全ステージに自動で掛けるので、登録さえすれば対象になります。
